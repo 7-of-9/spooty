@@ -16,8 +16,9 @@ Private playlists need **logged-in main Chrome**, not isolated MCP Chrome.
 
 - CDP: **only** `http://127.0.0.1:17331` (`scripts/cdp-keepalive.mjs`). Never a new DevTools WebSocket (Allow prompt). Never `Target.activateTarget`. One background tab via `GET /tab`, then `Page.navigate`.
 - Isolated Chrome cannot see private playlists. Do not spawn extra Chrome for scrape.
-- Spotify embed/API often 429 (`QUOTA_EXCEEDED`) or cap at **100**. Do not wait hours on Retry-After. Resync by **page-scraping** the live playlist (scroll the overflow scroller, `[data-testid=tracklist-row]`). Recents dump only captured visible rows — dumps can be short.
-- Song count: playlist header only — `[data-testid=entityTitle]` / `main h1` / last `h1` in that section. Never `document.body` (sidebar Liked Songs is 1658).
+- **Do not scrape playlist HTML for track lists.** Mint a logged-in web-player Bearer by hooking `fetch` in a background tab (`?spooty-token=1`), then call `https://spclient.wg.spotify.com/playlist/v2/playlist/{id}` and hydrate names via `metadata/4/track/{gid}`. CLI: `node scripts/spotify-session.mjs playlist <id>`. Cookie replay from Node is WAF-blocked (403 / "Unauthorized request"); official `api.spotify.com/v1` is a separate quota that 429s independently of spclient.
+- Anonymous embed tokens cap at ~100 and 429 with multi-hour Retry-After — do not wait hours, do not use them for library resync.
+- HTML page-scrape is last resort only (CDP proxy down / session mint failed). Song count from APIs (`length`), never `document.body` (sidebar Liked Songs is 1658).
 - Clicking a playlist auto-resyncs (10 min debounce) plus a 15 min timer. Do not nag that the dump count looks short.
 
 ## Library UI
