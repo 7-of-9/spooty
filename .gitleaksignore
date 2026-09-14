@@ -1,0 +1,5 @@
+# One historical NestJS scaffold badge URL, not a Spooty credential.
+# Verified against the official NestJS starter and schematics README files.
+# This exception is limited to the exact original commit, path, rule and line.
+# See SECURITY.md. Do not allowlist all README files or generic-api-key matches.
+da9cf53c697157b9efd4c7c85a7332eda8e069dd:spooty-be/README.md:generic-api-key:5

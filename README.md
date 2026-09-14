@@ -1,178 +1,276 @@
-[![GitHub License](https://img.shields.io/github/license/dougchansan/spooty)](https://github.com/dougchansan/spooty/blob/main/LICENSE.md)
-[![GitHub Repo stars](https://img.shields.io/github/stars/dougchansan/spooty)](https://github.com/dougchansan/spooty)
-[![GitHub last commit](https://img.shields.io/github/last-commit/dougchansan/spooty)](https://github.com/dougchansan/spooty/commits/main)
+[![License](https://img.shields.io/github/license/7-of-9/spooty)](LICENSE.md)
+[![Last commit](https://img.shields.io/github/last-commit/7-of-9/spooty)](https://github.com/7-of-9/spooty/commits/main)
 
-![spooty logo](assets/logo.svg)
-# Spooty - selfhosted Spotify downloader
-Spooty is a self-hosted Spotify downloader.
-It allows download track/playlist/album from the Spotify url.
-It can also subscribe to a playlist or author page and download new songs upon release.
-Spooty basically downloads nothing from Spotify, it only gets information from spotify and then finds relevant and downloadeds music on Youtube. 
-The project is based on NestJS and Angular.
+![Spooty logo](assets/logo.svg)
 
-## CLI and website
+# Spooty — library dashboard and acquisition CLI
 
-This fork supports two first-class entry points to the shared acquisition stack:
-the local website at `http://127.0.0.1:4200/` and the **[Spooty CLI](scripts/acquire/README.md)**.
-Use Node **20.19.4** (`nvm use`), then:
+This is **[7-of-9/spooty](https://github.com/7-of-9/spooty)**, a fork of
+[dougchansan/spooty](https://github.com/dougchansan/spooty), originally derived
+from [Dawson7777/spooty](https://github.com/Dawson7777/spooty).
+
+Spooty reads Spotify metadata, finds corresponding YouTube audio, and builds a
+local MP3 library. It does not download audio from Spotify. This fork extends
+the original NestJS/Angular application into a resumable, duration-checked
+library pipeline with **two first-class entry points: the website and CLI**.
+They call the same acquisition implementation; no AI agent or manual browser
+search is needed for individual songs.
+
+## What this fork adds
+
+| Extension | What it does |
+| --- | --- |
+| First-class CLI | `spooty` package executable, `npm run acquire`, command-specific help, strict argument validation, local doctor, offline plan, live status/control and benchmark reporting. |
+| Shared acquisition engine | CLI and Nest adapters share YouTube transport, client selection, private cookie copies, candidate/duration policy, filename identity, MP3 verification, tagging and atomic publication. They keep their own schedulers, not duplicate download implementations. |
+| Durable resume and cross-entry history | A shared SQLite work journal and rejection ledger preserve saved, Missing, exhausted-search and failure outcomes across restarts and CLI/web ownership changes. Ordinary reruns fast-skip completed and parked work. |
+| Ranked candidate selection | Configurable candidate depth, default **10** results per track. Wrong-length candidates are disqualified and selection advances; they do not count as network failures. A deeper search deliberately reopens exhausted selection. |
+| Spotify duration guard | Source-duration lookup/cache, candidate checks, a pre-download filter, and independent ffprobe validation of the final MP3. Tolerance is **±5%, with a 5-second minimum and 20-second maximum**. Unknown source duration cannot silently pass. |
+| Batched, paced acquisition | Separate search/download pools, backpressure, metered admissions, graceful draining and exclusive YouTube ownership. Genuine block signals immediately terminate owned work and preserve the safety floor/cooldown. |
+| Spotify session integration | Logged-in Chrome web-player metadata through a persistent loopback bridge, private-playlist support, paginated metadata, cache reuse and bounded request pacing. The supported library path does not require Spotify Developer credentials or playlist HTML scraping. |
+| Saved-library-first dashboard | Filter/sort/select playlists; show actionable and running work first; distinguish physical files, Missing, exhausted searches and operational errors. Discovery/resync runs in the background without blocking work from saved metadata. |
+| Local playback and reuse | Actual MP3 filenames, browser playback with range requests, cross-playlist reuse and hardlinks/copy fallback. Shared filename handling supports long Unicode titles. Physical saved files take priority over stale error records. |
+| Explicit recovery controls | Candidate depth and network retries are separate options. Normal Download preserves parked outcomes; separate actions reopen failed work or exhausted searches. CLI controls verify the live owner/run before writing requests. |
+| Full-library audit and repair tools | Resumable local duration audits, source-identity coverage, review ledgers, staged candidate inspection and scoped repair/deletion tools with fingerprint checks and manifests. Normal ingest never runs historical deletion scripts. |
+| Measured operational reporting | Newly published MP3s/minute versus a **3/min** baseline, unique-inode disk usage, durable outcomes, owner/queue/cooldown state, actionable-work ETAs and a 25% time buffer. Parked exceptions get no invented ETA. |
+| Regression and operator tooling | CLI, backend and real-browser frontend tests; isolated queue-handoff tests; local ffprobe/tagging fixtures; queue-recovery and process-monitoring scripts; documented product/operations contracts. |
+
+## Pipeline
+
+```text
+CLI catalog/journal adapter ─┐
+                            ├─ shared acquisition core ─ verified, tagged MP3
+Web HTTP/Bull/UI adapter ────┘
+```
+
+1. Read saved Spotify metadata and deduplicate catalog songs.
+2. Reuse published local files; fast-skip Missing and same-depth exhausted
+   outcomes unless the operator explicitly reopens them.
+3. Resolve the Spotify duration and inspect ranked YouTube candidates.
+4. Select an acceptable candidate, pass the pre-download duration check, and
+   download/convert under the shared admission and concurrency limits.
+5. Verify the actual MP3 codec/duration, write tags, and publish atomically.
+   Make playlist links/copies, then persist completion for either entry point.
+
+The duration allowance is `min(20, max(5, spotifySeconds * 0.05))` seconds.
+A 200-second song allows 190–210 seconds. No automatic trimming is performed.
+**Matching duration does not prove the same recording, remix or performance**;
+recording-identity reviews are tracked separately.
+
+Implementation: [`src/backend/src/shared/acquisition/`](src/backend/src/shared/acquisition/).
+The older `scripts/acquire/*.mjs` transport/policy modules are compatibility
+exports of this core, not a parallel implementation.
+
+## CLI quick reference
 
 ```sh
+npm run acquire -- --help
 npm run acquire -- doctor
 npm run acquire -- plan
 npm run acquire -- run --limit 8
+npm run acquire -- status
+npm run acquire -- benchmark
+npm run acquire -- stop
 ```
 
-The CLI reference covers every command/option, skip and retry semantics,
-prerequisites, durable state, graceful web/CLI ownership transfer and the
-shared duration-checked pipeline. [ACQUIRE.md](ACQUIRE.md) retains historical
-benchmark/audit notes; its old trial commands are not the default restart recipe.
+`node bin/spooty.mjs` and the historical `node scripts/acquire.mjs` are equivalent
+entry points. Optional `npm link` exposes the `spooty` shell command.
 
-> [!IMPORTANT]
-> Please do not use this tool for piracy! Download only music you own rights! Use this tool only on your responsibility.
+- `plan` is read-only and shows what a restart would actually do.
+- `run --takeover` stops new web admissions, drains current work and takes
+  exclusive ownership. Queued jobs and existing cooldown/admission history
+  survive; originally paused queues remain paused on handback.
+- `--max-searches 10` means ranked candidate results, **not** network retries.
+- `--network-retries 5` permits five additional workflow attempts after network
+  failure. Operational failures have a separate five-failure cap.
+- `plan --max-searches 20` previews deeper selection;
+  `plan --retry-errors` previews reopening exhausted operational/network work.
+- `pace`, `stop`, `inspect-review` and `review-work` require a verified live owner.
+  Review actions are advanced exception handling, not the normal ingest path.
 
-### Content
-- [🚀 Installation](#-installation)
-  - [Docker](#docker)
-    - [Docker command](#docker-command)
-    - [Docker compose](#docker-compose)
-  - [Build from source](#build-from-source)
-    - [Process](#requirements)
-    - [Requirements](#process)
-  - [Environment variables](#environment-variables)
-- [⚖️ License](#-license)
+**[Complete CLI README: every command, option, range, environment setting and
+resume rule](scripts/acquire/README.md).** Invalid, duplicate, unknown or
+command-inapplicable arguments are rejected rather than silently ignored.
 
-## 🚀 Installation
-Recommended and the easiest way how to start to use of Spooty is using docker.
+## Setup and current support boundary
 
-> [!NOTE]
-> This fork does not require a Spotify Developer application. It reads playlist
-> saved and authenticated web-player metadata, so there is no
-> `SPOTIFY_CLIENT_ID` or `SPOTIFY_CLIENT_SECRET` to configure.
+The verified deployment is **local macOS**, Node **20.19.4**, Redis, NestJS on
+`127.0.0.1:3000` and Angular on `127.0.0.1:4200`. The acquisition tooling still
+contains installation-specific defaults, including the macOS yt-dlp binary and
+Homebrew ffmpeg paths. This is not yet a portable, fresh-clone, one-command
+installer. Personal playlists, media, cookies, caches and provider binaries are
+deliberately **not included** in the repository.
 
-### Docker
+Prerequisites:
 
-This fork does not publish an image to Docker Hub, so build it locally first:
+- Node **20.19.4** via nvm; development dependencies are required for the CLI's
+  shared TypeScript loader.
+- Redis, ffmpeg and ffprobe. The verified ffmpeg/ffprobe location is
+  `/opt/homebrew/bin/`.
+- A separate **Node 22+** executable for yt-dlp's JavaScript solver, supplied
+  through `YT_JS_RUNTIME_PATH`; this does not change the application's Node pin.
+- The reviewed `ytdlp-nodejs/bin/yt-dlp_macos` binary. Compatibility is checked
+  against a reviewed SHA-256; an unreviewed update fails closed.
+- Saved playlist metadata and a durable library database, populated through
+  the website's Spotify integration or supplied from an existing installation.
+- For private Spotify metadata: the logged-in main Chrome profile and the
+  persistent bridge in `scripts/cdp-keepalive.mjs` on `127.0.0.1:17331`.
+- For the retained authenticated YouTube route: a private Netscape cookie file
+  and the pinned bgutil **2.0.0** plugin/provider on `127.0.0.1:4416`.
+  `--pot-recovery` enables use of an existing provider; it does not install or
+  launch it. The plugin/provider files are local-only.
 
-```shell
-git clone https://github.com/dougchansan/spooty.git
+### Source checkout
+
+```sh
+git clone https://github.com/7-of-9/spooty.git
 cd spooty
-docker build -t spooty .
+nvm install 20.19.4
+nvm use
+npm ci
+cp -n src/backend/.env.default src/backend/.env
 ```
 
-For detailed configuration, see available [environment variables](#environment-variables).
+Use absolute paths so the CLI and backend operate on the same files. For
+example, run these exports from the repository root in **each application
+terminal**, adjusting the Node 22 path for your installation:
 
-#### Docker command
-```shell
-docker run -d -p 3000:3000 \
-  -v /path/to/downloads:/spooty/backend/downloads \
-  -v /path/to/cookies.txt:/spooty/cookies.txt:ro \
-  spooty
+```sh
+export SPOOTY_ROOT="$PWD"
+export DB_PATH="$SPOOTY_ROOT/data/spooty.sqlite"
+export DOWNLOADS_PATH="$SPOOTY_ROOT/downloads"
+export STATIC_PLAYLISTS_PATH="$SPOOTY_ROOT/PLAYLISTS_2026-09-08/playlists"
+export ACQUIRE_STATE_PATH="$SPOOTY_ROOT/data/acquire"
+export COOKIES_PATH="$SPOOTY_ROOT/cookies.txt"
+export YT_JS_RUNTIME_PATH="/absolute/path/to/node22/bin/node"
+mkdir -p data/acquire downloads PLAYLISTS_2026-09-08/playlists
 ```
 
-#### Docker compose
-```yaml
-services:
-  spooty:
-    image: spooty
-    container_name: spooty
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      - /path/to/downloads:/spooty/backend/downloads
-      - /path/to/cookies.txt:/spooty/cookies.txt:ro
-    environment:
-      # Configure other environment variables if needed
-      - DOWNLOAD_CONCURRENCY=2
+The dated metadata-directory name is a compatibility default, not bundled data.
+Set `STATIC_PLAYLISTS_PATH` to your own metadata directory if preferred. The CLI
+reads exported environment variables; do not assume it loads the backend `.env`.
+
+With Redis available, start the backend and frontend in separate terminals:
+
+```sh
+npm run start:be
 ```
 
-### Build from source
+```sh
+npm run start -w frontend -- --host 127.0.0.1 --port 4200
+```
 
-Spooty can be also build from source files on your own.
+Open **http://127.0.0.1:4200/**. The backend initializes the database; configure
+the Chrome bridge and use **Sync library** to populate saved metadata. Keep one
+persistent authorized bridge connection rather than opening a fresh browser
+debugging session per request. Then use **Download** or the CLI.
 
-#### Requirements
-- Node v20.19.4 (use the repository `.nvmrc` with `nvm use`)
-- Redis in memory cache
-- Ffmpeg
-- Python3
+For authenticated acquisition after the local prerequisites are installed:
 
-#### Process
-- install Node v20.19.4 using `nvm install` and use that node version `nvm use`
-- from project root install all dependencies using `npm install`
-- copy `.env.default` as `.env` in `src/backend` folder and modify desired environment properties (see [environment variables](#environment-variables))
-- build source files `npm run build`
-    - built project will be stored in `dist` folder
-- start server `npm run start`
+```sh
+npm run acquire -- doctor --authenticated --pot-recovery
+npm run acquire -- run --authenticated --pot-recovery --limit 8
+```
 
-### Environment variables
+`doctor` checks local prerequisites, not session validity or remote availability.
+Start with a bounded run; machine/network-specific throughput is not guaranteed.
 
-Some behaviour and settings of Spooty can be configured using environment variables and `.env` file.
+### Configuration and safety
 
-> [!IMPORTANT]
-> `YT_WEB_PROFILE` and custom Bull worker concurrency are read at module-import
-> time. Export them before starting Nest. The default `cli-proven` profile uses
-> the shared, duration-guarded MP3 pipeline; see the CLI reference for its current
-> profile, path defaults and safety behavior. Old per-web extractor/client/batch
-> knobs no longer define a second pipeline.
+| Setting | Purpose |
+| --- | --- |
+| `DB_PATH` | Durable library SQLite path. Never put it under `dist/`, which watch builds may erase. |
+| `DOWNLOADS_PATH` | Local MP3 root. Playlist destinations reuse files where possible. |
+| `STATIC_PLAYLISTS_PATH` | Saved playlist metadata; shared by CLI and website. |
+| `ACQUIRE_STATE_PATH` | Shared work journal, duration rejection ledger and CLI runtime reports. |
+| `COOKIES_PATH` | Private Netscape-format cookie file; never a command-line credential value. |
+| `REDIS_HOST`, `REDIS_PORT` | Shared queue/ownership Redis, normally `127.0.0.1:6379`. |
+| `BIND_HOST`, `PORT` | Local backend binding, normally `127.0.0.1:3000`. |
+| `YT_WEB_PROFILE` | Default `cli-proven`; `custom` opts into custom web settings, not out of quality/safety checks. Export before starting Nest. |
+| `FORMAT`, `QUALITY` | Shared ingest requires `mp3` and quality `0`; unsupported settings fail before admission. |
+| `YT_JS_RUNTIME_PATH` | Separate Node 22+ executable used by the yt-dlp solver. |
+| `SPOTIFY_META_CONC`, `SPOTIFY_META_GAP_MS` | Authenticated metadata gate: two concurrent calls and 250 ms spacing by default; honors Retry-After. |
 
- Name                 | Default                                     | Description                                                                                                                                   |
-----------------------|---------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
- DB_PATH              | `./config/db.sqlite` (relative to backend)  | Path where Spooty database will be stored                                                                                                     |
- FE_PATH              | `../frontend/browser` (relative to backend) | Path to frontend part of application                                                                                                          |
- DOWNLOADS_PATH       | `./downloads` (relative to backend)         | Path where downaloded files will be stored                                                                                                    |
- FORMAT               | `mp3`                                       | Shared ingest publishes MP3; other formats are rejected, not silently mislabeled. |
- QUALITY              | `0`                                         | Shared ingest uses best VBR MP3 quality0. Other values are rejected. |
- PORT                 | 3000                                        | Port of Spooty server                                                                                                                         |
- BIND_HOST            | 127.0.0.1                                   | Interface address for the unauthenticated local API. Keep loopback unless an authenticated reverse proxy is intentionally added.             |
- REDIS_PORT           | 6379                                        | Port of Redis server                                                                                                                          |
- REDIS_HOST           | localhost                                   | Host of Redis server                                                                                                                          |
- REDIS_RUN            | false                                       | Whenever Redis server should be started from backend (recommended for Docker environment)                                                     |
- YT_WEB_PROFILE | `cli-proven` | Shared reviewed profile; `custom` opts out of its authenticated route and Bull slot defaults, not out of duration/safety checks. |
- DOWNLOAD_CONCURRENCY | 32 logical jobs in retained profile | Custom-profile Bull download slots only; the shared pace gate separately limits actual yt-dlp processes. |
- SEARCH_CONCURRENCY | 8 logical jobs in retained profile | Custom-profile Bull search slots only; the shared pace gate separately limits actual yt-dlp processes. |
- ACQUIRE_STATE_PATH | `data/acquire` under this checkout | CLI/web shared work journal and rejection history; must point to the same directory. |
- YT_POT_RECOVERY_ENABLED | on in retained profile | Enable the existing pinned bgutil2.0.0 plugin/provider for authenticated downloads in custom mode. |
- YT_JS_RUNTIME_PATH | local Node22.13.0 path | Executable used only by yt-dlp's JavaScript solver; Nest and CLI remain on Node20.19.4. |
- YT_REPEAT_BOT_COOLDOWN_MIN_MS | 900000                             | Minimum cooldown after another confirmed block while already at the safety floor.                                                            |
- YT_REPEAT_BOT_COOLDOWN_MAX_MS | 1800000                            | Maximum cooldown after another confirmed block while already at the safety floor.                                                            |
- YT_REPEAT_BOT_WINDOW_MS | 3600000                                  | How recently a prior confirmed block must have occurred to use the longer repeated-floor cooldown.                                            |
+The retained profile is **4 download batches + 1 search batch**, batch size **8**,
+candidate buffer **192**, and **240 download admissions per ten minutes**.
+These are not tracks per second. Persisted pace/cooldown state takes precedence;
+restarting must not silently restore a faster profile after a block.
 
-The optional POT recovery route expects the pinned 2.0.0 provider to be running
-under Node 20.19.4 as `node build/main.js --host 127.0.0.1 --port 4416`. Start
-and health-check that process before enabling the flag. The shared stack pins
-the plugin under `data/yt-dlp-plugins` and the provider to that loopback endpoint.
-Authenticated downloads use `mweb` + POT when enabled; authenticated searches
-use `web_creator`, and anonymous requests explicitly use `visionos`.
-The installed reviewed release does not support `android_sdkless`.
-Set `YT_JS_RUNTIME_PATH` to Node 22 or newer so yt-dlp can solve current EJS
-challenges while the Nest application continues to run under Node 20.19.4.
+The first genuine YouTube 429/bot-check/API-page block immediately terminates
+owned processes and trips to **one total process and 8 admissions/ten minutes**,
+with a retained cooldown. Automatic pace escalation is disabled. Candidate
+disqualification is a normal selection outcome, not a network failure.
 
-> [!WARNING]
-> A genuine YouTube block immediately kills owned yt-dlp work and trips the
-> shared one-process,8-admissions/ten-minute safety floor with a cooldown.
-> Network failures and candidate disqualifications are accounted separately.
-> Restarts preserve this history; monitor output before explicitly changing pace.
+Current reviewed routes are `visionos` anonymously, `web_creator` for
+authenticated search, and `mweb` with the pinned local provider for authenticated
+downloads. The reviewed release does not support `android_sdkless`.
 
-### How to supply your YouTube cookies
+The API has **no built-in authentication**. Keep it, Redis, the Chrome bridge
+and the POT provider on loopback; do not expose them directly to the internet.
+Cookies are sensitive session credentials. Keep them private, never commit or
+paste them, and never bake them into an image. Each yt-dlp invocation gets an
+isolated writable copy rather than modifying the master export.
 
-Some downloads are restricted unless the request is authenticated. Spooty passes
-a cookies file straight to `yt-dlp`, which expects **Netscape format** — not the
-`name=value; name=value` string used by older versions of these instructions.
+### Docker status
 
-1. Install a "cookies.txt" browser extension that exports in Netscape format.
-2. Go to https://www.youtube.com and log in if needed.
-3. Export the cookies for that domain to a file named `cookies.txt`.
-4. Mount that file into the container at `/spooty/cookies.txt`, as shown in the
-   [Docker](#docker) examples above.
+The inherited Dockerfile and release automation are retained for reference,
+but **the consolidated CLI/web pipeline has not been validated in Docker**.
+The Dockerfile still uses a different Node patch version and a Linux layout;
+the current CLI validates Node 20.19.4 and macOS tool paths. Do not treat the old
+Docker recipe or dependency auto-release workflow as a supported deployment
+path for these extensions. No Docker image for this fork is published here.
 
-> [!CAUTION]
-> This file contains live Google account session cookies, not just YouTube ones.
-> Anyone who obtains it can access your Google account without a password.
-> Store it outside your repository, never commit it, never paste its contents
-> into a chat, issue, or web form, and mount it read-only (`:ro`) so the
-> container cannot modify it. Prefer exporting from a throwaway Google account.
-> Bake it into an image only if you are certain that image will never be shared —
-> image layers preserve it even if a later layer deletes the file.
+## Verification and performance evidence
 
-# ⚖️ License
-[MIT](https://choosealicense.com/licenses/mit/)
+The consolidation checkpoint passed **440 tests**: 157 CLI, 182 backend and
+101 frontend, plus backend typechecking and the frontend production build.
+Tests include isolated Redis handoff/resume controls, shared-code identity,
+candidate/failure separation, and real local ffprobe/ID3/publication fixtures.
+YouTube protocol subprocesses are mocked in these regression tests; passing
+tests is not a live YouTube authentication or throughput guarantee.
+
+```sh
+npm run test:acquire
+npm run test -w backend -- --runInBand
+npm run test -w frontend -- --watch=false --browsers=ChromeHeadless
+npm run build
+```
+
+Real website checks exercised library selection, playback, Spotify resync and
+normal Download: a playlist with 17 saved tracks and one exhausted search
+returned **0 queued / 18 unchanged**. A subsequent Spotify discovery 429 did
+not prevent the saved-library workflow. The frontend build has known bundle/
+stylesheet budget and Sass-deprecation warnings.
+
+The completed duration-guarded CLI run produced **8,881 new MP3s in 941.08
+minutes: 9.44 MP3/min, 3.15× the 3/min baseline**, with zero genuine blocks.
+This is measured whole-run performance from one installation, including cached
+URLs and exception handling—not a clean-start guarantee or proof of recording
+identity. **The web adapter has not been separately throughput-benchmarked
+after consolidation.** Earlier unguarded 21/min windows are not the quality-
+guarded baseline.
+
+## Documentation and repository contents
+
+- [CLI reference](scripts/acquire/README.md): supported commands, all flags,
+  paths, resume rules, review requests and exit codes.
+- [Dashboard principles](OPERATOR_DASHBOARD_PRINCIPLES.md): product/UX contract.
+- [Website audit](WEBSITE_AUDIT.md): implementation evidence and remaining work.
+- [Acquisition notes](ACQUIRE.md) and [handover](HANDOVER.md): historical trials,
+  duration audits and operations checkpoints. Old PIDs, machine paths, live
+  status claims and recovery commands are historical, not fresh instructions.
+- [Agent rules](AGENTS.md): repository working conventions and ownership safety.
+- [Security and publication checks](SECURITY.md): exclusions, threat boundaries
+  and the narrowly reviewed upstream scanner exception.
+
+The repository includes code, tests, documentation and non-secret configuration
+templates. `.gitignore` excludes MP3s (including copies outside `downloads/`),
+downloads, private environment files, cookies/session exports, databases,
+playlist dumps, runtime caches, audit outputs and local provider installations.
+Historical one-off scrape/recovery scripts remain available for provenance;
+they are not required by the normal per-track CLI or web workflow.
+
+## License and attribution
+
+[MIT](LICENSE.md). Original copyright and upstream attribution are preserved.
+The upstream projects supplied the NestJS/Angular Spotify-to-YouTube application;
+this fork's extensions are described above.
