@@ -1,0 +1,119 @@
+export type PlaylistV2Item = { uri?: string };
+
+export type PlaylistV2Page = {
+  length?: number;
+  attributes?: { name?: string };
+  contents?: {
+    items?: PlaylistV2Item[];
+    truncated?: boolean;
+    pos?: number;
+  };
+};
+
+export function trackIdFromUri(uri: string | undefined): string | null {
+  if (!uri || !uri.startsWith('spotify:track:')) return null;
+  return uri.slice('spotify:track:'.length) || null;
+}
+
+/** Merge playlist/v2 pages in order, preserving repeated playlist entries. */
+export function mergePlaylistV2Pages(pages: PlaylistV2Page[]): {
+  length: number;
+  trackIds: string[];
+  name?: string;
+  truncated: boolean;
+} {
+  const trackIds: string[] = [];
+  let length = 0;
+  let name: string | undefined;
+  let truncated = false;
+  for (const page of pages) {
+    if (typeof page.length === 'number') length = page.length;
+    if (page.attributes?.name) name = page.attributes.name;
+    truncated = !!page.contents?.truncated;
+    for (const it of page.contents?.items || []) {
+      const id = trackIdFromUri(it?.uri);
+      if (!id) continue;
+      trackIds.push(id);
+    }
+  }
+  return { length, trackIds, name, truncated };
+}
+
+/**
+ * Next `from` offset for playlist/v2. Null means stop.
+ * `collectedItems` is the count of all content rows seen (tracks + other),
+ * not unique track ids — playlist `length` includes episodes/locals.
+ */
+export function nextPlaylistOffset(
+  page: PlaylistV2Page,
+  collectedItems: number,
+  length: number,
+): number | null {
+  if (length > 0 && collectedItems >= length) return null;
+  if (!page.contents?.truncated) return null;
+  const items = page.contents?.items || [];
+  if (!items.length) return null;
+  return collectedItems;
+}
+
+/**
+ * Drive paging via `fetchPage(from)` until the source is no longer truncated
+ * (or collected rows reach `length`). Used by SpotifySessionService and tests.
+ */
+export async function collectPlaylistV2TrackIds(
+  fetchPage: (from: number) => Promise<PlaylistV2Page>,
+): Promise<{
+  length: number;
+  trackIds: string[];
+  name?: string;
+  truncated: boolean;
+}> {
+  const pages: PlaylistV2Page[] = [];
+  let from = 0;
+  let collectedItems = 0;
+  for (let i = 0; i < 80; i++) {
+    const page = await fetchPage(from);
+    if (
+      from > 0 &&
+      typeof page.contents?.pos === 'number' &&
+      page.contents.pos < from
+    ) {
+      const merged = mergePlaylistV2Pages(pages);
+      return {
+        length: merged.length,
+        trackIds: merged.trackIds,
+        name: merged.name,
+        truncated: true,
+      };
+    }
+    const items = page.contents?.items || [];
+    pages.push(page);
+    collectedItems += items.length;
+    const merged = mergePlaylistV2Pages(pages);
+    const next = nextPlaylistOffset(page, collectedItems, merged.length);
+    if (next == null) {
+      return {
+        length: merged.length,
+        trackIds: merged.trackIds,
+        name: merged.name,
+        truncated: !!page.contents?.truncated && collectedItems < merged.length,
+      };
+    }
+    if (next <= from) {
+      return {
+        length: merged.length,
+        trackIds: merged.trackIds,
+        name: merged.name,
+        truncated: true,
+      };
+    }
+    from = next;
+  }
+  const merged = mergePlaylistV2Pages(pages);
+  return {
+    length: merged.length,
+    trackIds: merged.trackIds,
+    name: merged.name,
+    truncated: true,
+  };
+}

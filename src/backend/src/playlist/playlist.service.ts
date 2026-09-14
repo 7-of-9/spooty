@@ -21,7 +21,7 @@ enum WsPlaylistOperation {
 @Injectable()
 export class PlaylistService {
   @WebSocketServer() io: Server;
-  private readonly logger = new Logger(TrackService.name);
+  private readonly logger = new Logger(PlaylistService.name);
 
   constructor(
     @InjectRepository(PlaylistEntity)
@@ -40,6 +40,13 @@ export class PlaylistService {
 
   findOne(id: number): Promise<PlaylistEntity | null> {
     return this.repository.findOneBy({ id });
+  }
+
+  findBySpotifyUrl(spotifyUrl: string): Promise<PlaylistEntity | null> {
+    return this.repository.findOne({
+      where: { spotifyUrl },
+      relations: { tracks: true },
+    });
   }
 
   async remove(id: number): Promise<void> {
@@ -152,7 +159,8 @@ export class PlaylistService {
             {
               artist: track.artist,
               name: track.name,
-              spotifyUrl: track.previewUrl || null,
+              spotifyUrl: track.href || (track.id ? `https://open.spotify.com/track/${track.id}` : null),
+              durationMs: track.durationMs || null,
               coverUrl: track.coverUrl || savedPlaylist.coverUrl, // Use track's album art, fallback to playlist cover
             },
             savedPlaylist,
@@ -185,7 +193,10 @@ export class PlaylistService {
   }
 
   async save(playlist: PlaylistEntity): Promise<PlaylistEntity> {
-    const savedPlaylist = await this.repository.save(playlist);
+    const savedPlaylist = await this.repository.save({
+      ...playlist,
+      createdAt: playlist.createdAt ?? Date.now(),
+    });
     this.io.emit(WsPlaylistOperation.New, savedPlaylist);
     return savedPlaylist;
   }
@@ -214,6 +225,7 @@ export class PlaylistService {
   async checkActivePlaylists(): Promise<void> {
     // Only check actual playlists (not individual tracks) that are subscribed
     const activePlaylists = await this.findAll(
+      {},
       { active: true, isTrack: false },
     );
     for (const playlist of activePlaylists) {
@@ -223,6 +235,9 @@ export class PlaylistService {
           playlist.spotifyUrl,
         );
         this.createPlaylistFolderStructure(playlist.name);
+        if (playlist.error) {
+          await this.update(playlist.id, { error: null });
+        }
       } catch (err) {
         await this.update(playlist.id, { ...playlist, error: String(err) });
       }
@@ -230,7 +245,8 @@ export class PlaylistService {
         const track2Save = {
           artist: track.artist,
           name: track.name,
-          spotifyUrl: track.previewUrl,
+          spotifyUrl: track.href || (track.id ? `https://open.spotify.com/track/${track.id}` : null),
+          durationMs: track.durationMs || null,
         };
         const isExist = !!(
           await this.trackService.getAll({

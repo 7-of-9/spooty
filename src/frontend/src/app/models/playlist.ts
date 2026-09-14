@@ -1,3 +1,5 @@
+import { Track } from './track';
+
 export interface Playlist {
   id: number;
   name?: string;
@@ -6,4 +8,5 @@ export interface Playlist {
   active: boolean;
   isTrack?: boolean;
   createdAt: number;
+  tracks?: Track[];
 }

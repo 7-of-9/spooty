@@ -8,7 +8,9 @@
   --bulma-primary-l: 42%;
 }
 
-body {
+html, body, app-root {
+  height: 100%;
   padding: 0;
   margin: 0;
+  overflow: hidden;
 }

@@ -1,139 +1,451 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { TrackEntity } from '../track/track.entity';
-import { EnvironmentEnum } from '../environmentEnum';
-import { TrackService } from '../track/track.service';
+import {
+  ConflictException,
+  Injectable,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { exec, spawn } from 'child_process';
+import { mkdirSync } from 'fs';
+import { dirname, join, resolve } from 'path';
+import { TrackEntity } from '../track/track.entity';
+import { AcquisitionOwner } from './acquisition-owner';
+import {
+  YoutubePace,
+  PaceLever,
+  PaceSnapshot,
+  PaceStateFile,
+} from './youtube-pace';
+import {
+  CLI_PROVEN_PROFILE,
+  usesCliProvenProfile,
+  webPaceDefaults,
+} from './youtube-ingest-profile';
+import { Transport, verifyMp3 } from './acquisition/transport';
+import {
+  assertDuration,
+  DurationCandidates,
+  DURATION_NO_CANDIDATE,
+  DURATION_REJECTED,
+  DURATION_SOURCE_MISSING,
+} from './acquisition/duration-policy';
+import { candidateLimits } from './acquisition/candidate-policy';
+import { publishMp3 } from './acquisition/publication';
+import { youtubeVideoId, isNonEmptyBatchFile } from './youtube-download-batch';
+import { UtilsService } from './utils.service';
 const NodeID3 = require('node-id3');
 
+type Work = {
+  song: any;
+  track?: TrackEntity;
+  output?: string;
+  onStart?: () => void | Promise<void>;
+  onProgress?: (progress: { percentage: number }) => void;
+  resolve: (value?: any) => void;
+  reject: (error: unknown) => void;
+};
+
+/**
+ * Nest/Bull adapter only. All YouTube subprocesses, protocol/client selection,
+ * batching, duration evidence, private cookies and MP3 publication use the same
+ * framework-neutral core as the CLI. No network activity occurs on construction.
+ */
 @Injectable()
-export class YoutubeService {
-  private readonly logger = new Logger(TrackService.name);
+export class YoutubeService implements OnApplicationShutdown {
+  private readonly pace = new YoutubePace(webPaceDefaults());
+  private readonly provenProfile = usesCliProvenProfile();
+  private readonly owner: AcquisitionOwner;
+  private transport: Transport;
+  private candidates: DurationCandidates;
+  private readonly pendingSearches: Work[] = [];
+  private readonly pendingDownloads: Work[] = [];
+  private readonly active = new Set<Work>();
+  private readonly progress = new Map<string, Set<Work>>();
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private shuttingDown = false;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {
+    this.owner = new AcquisitionOwner(configService);
+  }
 
-  async findOnYoutubeOne(artist: string, name: string): Promise<string> {
-    this.logger.debug(`Searching ${artist} - ${name} on YouTube Music`);
-    const query = `${artist} ${name}`.replace(/"/g, '').replace(/&/g, '');
-    const encodedQuery = encodeURIComponent(query);
-    const ytDlpBin = require('ytdlp-nodejs').YtDlp.defaultOptions?.binaryPath
-      || require('path').resolve(require.resolve('ytdlp-nodejs'), '..', '..', 'bin', 'yt-dlp');
+  ownerSnapshot() {
+    return this.owner.snapshot();
+  }
+  assertWebAllowed() {
+    return this.owner.assertWebAllowed();
+  }
+  paceSnapshot(): PaceSnapshot {
+    return this.pace.snapshot();
+  }
+  setPace(next: PaceStateFile) {
+    this.pace.applyState(next);
+  }
+  coolOff(ms?: number, detail?: string) {
+    this.pace.coolOff(ms, detail);
+  }
+  tripRateLimit(
+    detail?: string,
+    ms?: number,
+    lever: PaceLever = 'downloadConc',
+  ) {
+    if (this.transport)
+      this.transport.trip(lever === 'searchConc' ? 'search' : 'download');
+    else this.pace.tripRateLimit(detail, ms, lever);
+  }
 
-    // Try YouTube Music first (studio recordings)
-    const ytMusicCmd = `"${ytDlpBin}" "https://music.youtube.com/search?q=${encodedQuery}" --print webpage_url --playlist-items 1 --cookies /spooty/cookies.txt --no-warnings 2>/dev/null`;
+  acquisitionDirectory() {
+    const db = this.configService.get<string>('DB_PATH') || process.env.DB_PATH;
+    return (
+      this.configService.get<string>('ACQUIRE_STATE_PATH') ||
+      process.env.ACQUIRE_STATE_PATH ||
+      this.configService.get<string>('ACQUIRE_STATE_DIR') ||
+      process.env.ACQUIRE_STATE_DIR ||
+      (db
+        ? join(dirname(resolve(db)), 'acquire')
+        : resolve(__dirname, '../../../../data/acquire'))
+    );
+  }
 
-    let url = await new Promise<string | null>((resolve) => {
-      exec(ytMusicCmd, { timeout: 30000 }, (err, stdout) => {
-        if (err || !stdout.toString().trim()) return resolve(null);
-        resolve(stdout.toString().trim().split('\n')[0]);
-      });
-    });
-
-    // Fallback to regular YouTube search
-    if (!url) {
-      this.logger.debug(
-        `Not found on YouTube Music, falling back to YouTube for ${artist} - ${name}`,
+  private engine(): Transport {
+    if (this.transport) return this.transport;
+    const format =
+      this.configService.get<string>('FORMAT') || process.env.FORMAT || 'mp3';
+    const quality = String(
+      this.configService.get('QUALITY') ?? process.env.QUALITY ?? '0',
+    );
+    if (format !== 'mp3' || quality !== '0')
+      throw new Error(
+        'Acquisition configuration requires FORMAT=mp3 and QUALITY=0',
       );
-      const ytCmd = `"${ytDlpBin}" "ytsearch1:${query}" --print webpage_url --no-playlist 2>/dev/null`;
-      url = await new Promise<string | null>((resolve, reject) => {
-        exec(ytCmd, { timeout: 30000 }, (err, stdout) => {
-          if (err) return reject(err);
-          resolve(stdout.toString().trim());
-        });
-      });
+    for (const key of ['YT_SEARCH_BATCH_SIZE', 'YT_DOWNLOAD_BATCH_SIZE']) {
+      const configured = this.configService.get(key) ?? process.env[key];
+      if (configured !== undefined && Number(configured) !== 8)
+        throw new Error(
+          'Acquisition configuration requires batch size8; remove legacy web batch overrides',
+        );
     }
+    const state = this.acquisitionDirectory();
+    const root = resolve(dirname(require.resolve('ytdlp-nodejs')), '../../..');
+    const temporary = join(dirname(state), 'web-acquisition-tmp');
+    mkdirSync(temporary, { recursive: true });
+    this.transport = new Transport(
+      {
+        root,
+        temp: temporary,
+        cookies:
+          this.configService.get<string>('COOKIES_PATH') ||
+          process.env.COOKIES_PATH ||
+          join(root, 'cookies.txt'),
+      },
+      {
+        authenticated: this.provenProfile,
+        'pot-recovery':
+          this.provenProfile ||
+          /^(1|true)$/i.test(process.env.YT_POT_RECOVERY_ENABLED || ''),
+        'max-searches': 10,
+      },
+      () => {},
+      {
+        pace: this.pace,
+        beforeProcess: () => this.owner.assertWebAllowed(),
+        onProgress: (id, percentage) => {
+          for (const work of this.progress.get(id) || [])
+            work.onProgress?.({ percentage });
+        },
+      },
+    );
+    return this.transport;
+  }
 
-    if (!url) throw new Error('No result found on YouTube Music or YouTube');
-    this.logger.debug(`Found ${artist} - ${name} on ${url}`);
-    return url;
+  private rejectionLedger(): DurationCandidates {
+    // Same ledger as CLI; the Redis owner and paused-queue handback prohibit
+    // concurrent owners. Re-open at the start of each web workload, not boot.
+    return (this.candidates ||= new DurationCandidates(
+      join(this.acquisitionDirectory(), 'duration-rejections.json'),
+    ));
+  }
+
+  song(track: TrackEntity): any {
+    return {
+      key: new UtilsService(this.configService).trackFileKey(
+        track.artist,
+        track.name,
+      ),
+      artist: track.artist,
+      name: track.name,
+      durationMs: track.durationMs,
+      url: track.youtubeUrl || null,
+      durationCandidates: track.youtubeCandidates ?? undefined,
+      searchLimit: track.searchLimit || 0,
+    };
+  }
+
+  async findTrackOnYoutube(
+    track: TrackEntity,
+    onStart?: () => void | Promise<void>,
+  ): Promise<string> {
+    const song = this.song(track);
+    try {
+      const url = await this.enqueue('search', { song, track, onStart });
+      track.youtubeUrl = url;
+      return url;
+    } finally {
+      track.youtubeCandidates = song.durationCandidates || null;
+      track.searchLimit = song.searchLimit || track.searchLimit || 0;
+    }
+  }
+
+  // Compatibility facade for callers that are not a persisted TrackEntity.
+  async findOnYoutubeOne(
+    artist: string,
+    name: string,
+    onStart?: () => void | Promise<void>,
+    expectedMs?: number,
+    excludedIds: string[] = [],
+  ): Promise<string> {
+    const track: TrackEntity = {
+      artist,
+      name,
+      spotifyUrl: null,
+      durationMs: expectedMs,
+    };
+    const song = this.song(track);
+    for (const id of excludedIds)
+      this.rejectionLedger().reject({
+        ...song,
+        url: 'https://www.youtube.com/watch?v=' + id,
+      });
+    return this.enqueue('search', { song, track, onStart });
   }
 
   async downloadAndFormat(
     track: TrackEntity,
     output: string,
     onProgress?: (progress: { percentage: number }) => void,
+    onStart?: () => void | Promise<void>,
+    cookiesFirst = false,
   ): Promise<void> {
-    this.logger.debug(
-      `Downloading ${track.artist} - ${track.name} (${track.youtubeUrl}) from YT`,
-    );
-    if (!track.youtubeUrl) {
-      this.logger.error('youtubeUrl is null or undefined');
-      throw Error('youtubeUrl is null or undefined');
-    }
-    const ytDlpBin = require('ytdlp-nodejs').YtDlp.defaultOptions?.binaryPath
-      || require('path').resolve(require.resolve('ytdlp-nodejs'), '..', '..', 'bin', 'yt-dlp');
-    const format = this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3';
-    const quality = this.configService.get<string>('QUALITY');
-    const args = [
-      '--js-runtime', 'node',
-      '-o', output,
-      '--cookies', '/spooty/cookies.txt',
-      '--extract-audio',
-      '--audio-format', format,
-      '--progress',
-      '--newline',
-      '--progress-template', '%(progress._percent_str)s',
-      '--no-warnings',
-      '--audio-quality', quality || '0',
-      '--', track.youtubeUrl,
-    ];
-
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn(ytDlpBin, args);
-      let stderr = '';
-      proc.stdout.on('data', (chunk: Buffer) => {
-        const lines = chunk.toString().split('\n');
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed && onProgress) {
-            const pct = parseFloat(trimmed);
-            if (!isNaN(pct)) {
-              onProgress({ percentage: pct });
-            }
-          }
-        }
-      });
-      proc.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      proc.on('error', reject);
-      proc.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`yt-dlp exited with code ${code}: ${stderr.trim()}`));
-        } else {
-          resolve();
-        }
-      });
+    if (isNonEmptyBatchFile(output)) return;
+    const song = { ...this.song(track), cookiesNext: cookiesFirst };
+    await this.enqueue('download', {
+      song,
+      track,
+      output,
+      onProgress,
+      onStart,
     });
-    this.logger.debug(
-      `Downloaded ${track.artist} - ${track.name} to ${output}`,
-    );
+  }
+
+  /** Advance selection durably without consuming a network retry. */
+  rejectCandidate(track: TrackEntity): string | null {
+    const song = this.song(track);
+    this.rejectionLedger().advance(song);
+    track.youtubeUrl = song.url;
+    return song.url;
+  }
+
+  isRejectedCandidate(track: TrackEntity, url: string): boolean {
+    const song = this.song(track);
+    return this.rejectionLedger()
+      .rejected(song)
+      .some(
+        (item) =>
+          youtubeVideoId(item.url) === youtubeVideoId(url) &&
+          item.expectedMs === song.durationMs,
+      );
+  }
+
+  private async enqueue(
+    kind: 'search' | 'download',
+    request: Omit<Work, 'resolve' | 'reject'>,
+  ): Promise<any> {
+    await this.owner.assertWebAllowed();
+    if (this.shuttingDown) throw new Error('Acquisition admission cancelled');
+    if (
+      !(request.song.durationMs > 0) ||
+      !Number.isFinite(request.song.durationMs)
+    )
+      throw new Error(DURATION_SOURCE_MISSING);
+    const limits = candidateLimits({
+      'max-searches': request.track?.maxSearches ?? 10,
+      'network-retries': request.track?.networkRetryLimit ?? 5,
+    });
+    request.song.maxSearches = limits.maxSearches;
+    // Engine construction checks compatibility but launches no child. Doing it
+    // here ensures configuration failures reject a job rather than its timer.
+    this.engine();
+    return new Promise((resolveWork, reject) => {
+      const queue =
+        kind === 'search' ? this.pendingSearches : this.pendingDownloads;
+      queue.push({ ...request, resolve: resolveWork, reject });
+      if (!this.timers.has(kind))
+        this.timers.set(
+          kind,
+          setTimeout(() => {
+            this.timers.delete(kind);
+            void this.flush(kind);
+          }, 25),
+        );
+    });
+  }
+
+  private async flush(kind: 'search' | 'download'): Promise<void> {
+    const queue =
+      kind === 'search' ? this.pendingSearches : this.pendingDownloads;
+    if (!queue.length) return;
+    const depth = queue[0].song.maxSearches;
+    const capacity =
+      kind === 'download'
+        ? Math.min(
+            CLI_PROVEN_PROFILE.batchSize,
+            this.pace.snapshot().maxPerWindow,
+          )
+        : CLI_PROVEN_PROFILE.batchSize;
+    const work: Work[] = [];
+    for (let i = 0; i < queue.length && work.length < capacity; ) {
+      if (kind === 'download' || queue[i].song.maxSearches === depth)
+        work.push(...queue.splice(i, 1));
+      else i++;
+    }
+    for (const item of work) this.active.add(item);
+    if (queue.length) void this.flush(kind);
+    const byKey = new Map(work.map((item) => [item.song.key, item]));
+    const settle = (key: string, error?: unknown, value?: any) => {
+      // Duplicate songs may represent separate playlist destinations.
+      for (const item of work.filter((item) => item.song.key === key)) {
+        if (!this.active.delete(item)) continue;
+        error ? item.reject(error) : item.resolve(value);
+      }
+    };
+    try {
+      await this.owner.assertWebAllowed();
+      const engine = this.engine();
+      const admitted = async (songs: any[]) => {
+        for (const song of songs) await byKey.get(song.key)?.onStart?.();
+      };
+      if (kind === 'search') {
+        const failures = await engine.search(
+          work.map((item) => item.song),
+          (song, url) => {
+            if (!url) settle(song.key, new Error('No YouTube result'));
+            else settle(song.key, undefined, url);
+          },
+          this.rejectionLedger(),
+          admitted,
+          depth,
+        );
+        for (const failure of failures)
+          settle(failure.song.key, new Error(failure.error));
+      } else {
+        for (const item of work) {
+          const id = youtubeVideoId(item.song.url);
+          if (!this.progress.has(id)) this.progress.set(id, new Set());
+          this.progress.get(id).add(item);
+        }
+        const failures = await engine.download(
+          work.map((item) => item.song),
+          async (song, stagedPath, evidence) => {
+            await this.verifyAudioDuration(stagedPath, song.durationMs);
+            for (const item of work.filter(
+              (item) => item.song.key === song.key,
+            )) {
+              publishMp3(
+                stagedPath,
+                item.output,
+                { title: song.name, artist: song.artist },
+                (tags, path) => NodeID3.write(tags, path),
+              );
+              item.track.sourceEvidence = evidence || null;
+              item.onProgress?.({ percentage: 100 });
+            }
+            settle(song.key);
+          },
+          admitted,
+          true,
+        );
+        for (const failure of failures)
+          settle(failure.song.key, new Error(failure.error));
+      }
+    } catch (error) {
+      for (const item of work) settle(item.song.key, error);
+    } finally {
+      for (const item of work) {
+        this.progress.get(youtubeVideoId(item.song.url))?.delete(item);
+        if (this.active.delete(item))
+          item.reject(
+            new Error('YouTube attempt did not produce a verified result'),
+          );
+      }
+    }
+  }
+
+  async verifyAudioDuration(path: string, expectedMs?: number): Promise<void> {
+    assertDuration(expectedMs, await verifyMp3(path));
   }
 
   async addImage(
-    folderName: string,
-    coverUrl: string,
+    path: string,
+    url: string,
     title: string,
     artist: string,
   ): Promise<void> {
-    if (coverUrl) {
-      const res = await fetch(coverUrl);
-      const arrayBuf = await res.arrayBuffer();
-      const imageBuffer = Buffer.from(arrayBuf);
+    // Optional enrichment happens after mandatory title/artist tagged publication.
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error('Cover art unavailable');
+    if (
+      !NodeID3.update(
+        { title, artist, image: Buffer.from(await response.arrayBuffer()) },
+        path,
+      )
+    )
+      throw new Error('Cover art could not be written');
+  }
 
-      NodeID3.write(
-        {
-          title,
-          artist,
-          APIC: {
-            mime: 'image/jpeg',
-            type: { id: 3, name: 'front cover' },
-            description: 'cover',
-            imageBuffer,
-          },
-        },
-        folderName,
+  async selectProvenProfile(): Promise<PaceSnapshot> {
+    if (!this.provenProfile)
+      throw new ConflictException(
+        'Restart in cli-proven profile mode before selecting its pace',
       );
-    }
+    return this.owner.withPausedWebQueues(() => {
+      const state = this.pace.snapshot();
+      if (
+        state.active > 0 ||
+        state.coolRemainingMs > 0 ||
+        this.pendingDownloads.length ||
+        this.pendingSearches.length
+      )
+        throw new ConflictException(
+          'Active work or recovery cooldown prevents profile activation',
+        );
+      if (
+        state.downloadConc <= 1 &&
+        state.searchConc <= 1 &&
+        state.maxPerWindow <= 8
+      )
+        throw new ConflictException(
+          'Safety floor remains active; verified recovery is required before a measured pace increase',
+        );
+      this.pace.applyState({
+        downloadConc: CLI_PROVEN_PROFILE.downloadConc,
+        searchConc: CLI_PROVEN_PROFILE.searchConc,
+        maxPerWindow: CLI_PROVEN_PROFILE.maxPerWindow,
+        autoStep: false,
+        reason: 'Selected retained ' + CLI_PROVEN_PROFILE.id,
+      });
+      return this.pace.snapshot();
+    });
+  }
+
+  onApplicationShutdown() {
+    this.shuttingDown = true;
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.transport?.stopAdmissions();
+    this.transport?.killChildren();
+    for (const item of [
+      ...this.active,
+      ...this.pendingSearches.splice(0),
+      ...this.pendingDownloads.splice(0),
+    ])
+      item.reject(new Error('Acquisition admission cancelled'));
+    this.active.clear();
+    this.owner.onApplicationShutdown();
   }
 }

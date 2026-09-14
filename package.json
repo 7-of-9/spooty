@@ -1,11 +1,19 @@
 {
   "version": "2.4.1",
   "name": "spooty",
+  "bin": {
+    "spooty": "bin/spooty.mjs"
+  },
+  "engines": {
+    "node": "20.19.4"
+  },
   "workspaces": [
     "src/backend",
     "src/frontend"
   ],
   "scripts": {
+    "acquire": "node bin/spooty.mjs",
+    "test:acquire": "node --test scripts/acquire/*.test.mjs",
     "start:be": "npm run start:dev -w backend",
     "start:fe": "npm run start -w frontend",
     "build:be": "npm run build -w backend",

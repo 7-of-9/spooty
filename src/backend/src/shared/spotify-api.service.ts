@@ -1,8 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
+import { SpotifySessionService } from './spotify-session.service';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const fetch = require('isomorphic-unfetch');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getDetails } = require('spotify-url-info')(fetch);
+
+export type SpotifyTrackList = any[] & { truncated?: boolean };
+
+function loadUserAccessToken(): string | null {
+  if (process.env.SPOTIFY_ACCESS_TOKEN) {
+    return process.env.SPOTIFY_ACCESS_TOKEN;
+  }
+  const candidates = [
+    resolve(process.cwd(), '.spotify_token'),
+    resolve(__dirname, '../../../../.spotify_token'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      const token = readFileSync(p, 'utf8').trim();
+      if (token) return token;
+    }
+  }
+  return null;
+}
 
 @Injectable()
 export class SpotifyApiService {
@@ -10,7 +32,11 @@ export class SpotifyApiService {
   private embedToken: string | null = null;
   private embedTokenExpiry: number = 0;
 
-  constructor() {}
+  constructor(private readonly session: SpotifySessionService) {}
+
+  getLibraryPlaylists() {
+    return this.session.getLibraryPlaylists();
+  }
 
   private getPlaylistId(url: string): string {
     try {
@@ -90,8 +116,23 @@ export class SpotifyApiService {
   ): Promise<{ name: string; image: string }> {
     try {
       this.logger.debug(`Getting playlist metadata for ${spotifyUrl}`);
+      const playlistId = this.getPlaylistId(spotifyUrl);
+      const accessToken = await this.getEmbedToken('playlist', playlistId);
+      const response = await fetch(
+        `https://api.spotify.com/v1/playlists/${playlistId}?fields=name,images`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          name: data.name,
+          image: data.images?.[0]?.url || '',
+        };
+      }
+      this.logger.warn(
+        `Playlist API metadata ${response.status}, falling back to embed details`,
+      );
       const detail = await getDetails(spotifyUrl);
-
       return {
         name: detail.preview.title,
         image: detail.preview.image,
@@ -106,6 +147,21 @@ export class SpotifyApiService {
     type: string = 'track',
     id: string = '4uLU6hMCjMI75M1A2tKUQC',
   ): Promise<string> {
+    try {
+      const sessionToken = await this.session.getAccessToken();
+      if (sessionToken) return sessionToken;
+    } catch (e) {
+      this.logger.debug(
+        `No Chrome session token: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+    const userToken = loadUserAccessToken();
+    if (userToken) {
+      this.logger.debug(
+        'Using user Spotify access token for private playlist access',
+      );
+      return userToken;
+    }
     if (this.embedToken && Date.now() < this.embedTokenExpiry) {
       return this.embedToken;
     }
@@ -130,8 +186,7 @@ export class SpotifyApiService {
       throw new Error('No access token in embed page data');
     }
     this.embedToken = session.accessToken;
-    this.embedTokenExpiry =
-      session.accessTokenExpirationTimestampMs - 60000;
+    this.embedTokenExpiry = session.accessTokenExpirationTimestampMs - 60000;
     this.logger.debug('Successfully obtained embed token');
     return this.embedToken;
   }
@@ -160,12 +215,43 @@ export class SpotifyApiService {
       .filter((t) => t !== null);
   }
 
-  async getAllPlaylistTracks(spotifyUrl: string): Promise<any[]> {
+  async getAllPlaylistTracks(
+    spotifyUrl: string,
+    known?: Map<
+      string,
+      { name?: string; artist?: string; coverUrl?: string | null; durationMs?: number }
+    >,
+  ): Promise<SpotifyTrackList> {
     try {
       this.logger.debug(`Getting all tracks for playlist ${spotifyUrl}`);
 
       const playlistId = this.getPlaylistId(spotifyUrl);
       this.logger.debug(`Extracted playlist ID: ${playlistId}`);
+
+      try {
+        const live = await this.session.getPlaylistTracks(playlistId, known);
+        if (live.tracks.length) {
+          const tracks = live.tracks.map((t) => ({
+            id: t.id,
+            name: t.name,
+            artist: t.artist,
+            previewUrl: null,
+            coverUrl: t.coverUrl || null,
+            href: t.href,
+            n: t.n,
+            durationMs: t.durationMs,
+          })) as SpotifyTrackList;
+          tracks.truncated = live.truncated;
+          return tracks;
+        }
+      } catch (e) {
+        this.logger.warn(
+          `Session API failed for ${playlistId}: ${
+            e instanceof Error ? e.message : e
+          }`,
+        );
+        throw e;
+      }
 
       // Phase 1: Fetch embed page (gives us token + first 100 tracks as fallback)
       let embedHtml = '';
@@ -227,7 +313,21 @@ export class SpotifyApiService {
           if (response.status === 429 && retryCount < MAX_RETRIES) {
             retryCount++;
             const retryAfter = response.headers.get('retry-after');
-            const waitSecs = retryAfter ? parseInt(retryAfter, 10) : 30 * retryCount;
+            const parsed = retryAfter
+              ? parseInt(retryAfter, 10)
+              : 30 * retryCount;
+            // Spotify sometimes sends multi-hour Retry-After; don't freeze the app.
+            if (!Number.isFinite(parsed) || parsed > 60) {
+              this.logger.warn(
+                `Rate limited (429) with retry-after=${retryAfter}; using fallback instead of waiting`,
+              );
+              if (allTracks.length > 0) break;
+              if (embedFallbackTracks.length > 0) return embedFallbackTracks;
+              throw new Error(
+                'Spotify rate-limited this playlist fetch. Try Resync again in a minute.',
+              );
+            }
+            const waitSecs = parsed;
             this.logger.warn(
               `Rate limited (429), waiting ${waitSecs}s before retry ${retryCount}/${MAX_RETRIES}...`,
             );

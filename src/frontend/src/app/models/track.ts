@@ -8,6 +8,11 @@ export interface Track {
   playlistId?: number;
   error?: string;
   coverUrl?: string;
+  acquisitionState?: 'no-candidate' | 'missing' | 'retry' | 'failed' | null;
+  retryAt?: number | null;
+  searchLimit?: number | null;
+  networkAttempts?: number | null;
+  operationAttempts?: number | null;
 }
 
 export enum TrackStatusEnum {
@@ -17,4 +22,5 @@ export enum TrackStatusEnum {
   Downloading,
   Completed,
   Error,
+  RetryWaiting,
 }

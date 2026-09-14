@@ -8,12 +8,17 @@ import { TrackEntity } from './track/track.entity';
 import { TrackModule } from './track/track.module';
 import { PlaylistModule } from './playlist/playlist.module';
 import { PlaylistEntity } from './playlist/playlist.entity';
+import { LibraryModule } from './library/library.module';
 import { resolve } from 'path';
 import { EnvironmentEnum } from './environmentEnum';
 import { BullModule } from '@nestjs/bullmq';
+import { APP_GUARD } from '@nestjs/core';
+import { SharedModule } from './shared/shared.module';
+import { AcquisitionOwnerGuard } from './shared/acquisition-owner';
 
 @Module({
   imports: [
+    SharedModule,
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
@@ -21,8 +26,9 @@ import { BullModule } from '@nestjs/bullmq';
       useFactory: async (configService: ConfigService) => ({
         type: 'sqlite',
         database: resolve(
-          __dirname,
-          configService.get<string>(EnvironmentEnum.DB_PATH),
+          process.cwd(),
+          configService.get<string>(EnvironmentEnum.DB_PATH) ||
+            '../../data/spooty.sqlite',
         ),
         entities: [TrackEntity, PlaylistEntity],
         synchronize: true,
@@ -57,8 +63,9 @@ import { BullModule } from '@nestjs/bullmq';
     }),
     TrackModule,
     PlaylistModule,
+    LibraryModule,
   ],
   controllers: [AppController],
-  providers: [],
+  providers: [{ provide: APP_GUARD, useClass: AcquisitionOwnerGuard }],
 })
 export class AppModule {}

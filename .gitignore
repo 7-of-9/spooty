@@ -2,5 +2,36 @@
 /dist
 /.idea
 **/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+cookies.txt
+cookies*.txt
+.spotify_token
+scripts/tmp-*.mjs
+.spotify_session.json
+.spotify_playlist_meta.json
+.env
+.env.*
+!.env.default
+!.env.docker
+!.env.example
+!.env.sample
+/2024/
+/.DS_Store
+/.playlist_tracks.json
+# Downloaded media is local-only, including copies outside downloads/.
+downloads/
+*.[mM][pP]3
+*.part
+*.ytdl
+# Runtime databases, caches, provider installs, audits and private session state.
+/data/
+/PLAYLISTS_*/
+/src/backend/config/yt-pace.json
+/src/backend/config/yt-progress-last.json
+/tmp-*.json
+/tmp-*.md
+/src/backend/dump.rdb
 # Local Netlify folder
 .netlify

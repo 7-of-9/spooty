@@ -1,0 +1,876 @@
+<div class="shell">
+  <aside class="sidebar" aria-label="Playlists">
+    <div class="sidebar-head">
+      <div class="sidebar-title-row">
+        <h2 class="sidebar-title">Playlists</h2>
+        <span class="sidebar-count" *ngIf="data">
+          {{ fmt(visiblePlaylists.length) }}/{{ fmt(data.totals.playlists) }}
+        </span>
+      </div>
+      <p class="sidebar-stats" *ngIf="data">
+        <span class="sidebar-meta">
+          {{ fmt(diskTotal) }}/{{ fmt(data.totals.tracks) }}
+          {{ data.totals.tracks === 1 ? "occurrence" : "occurrences" }}
+          on disk
+        </span>
+        <span class="sidebar-attention" *ngIf="attentionPlaylists">
+          {{ fmt(attentionPlaylists) }} playlists ·
+          {{ fmt(attentionTracks) }}
+          {{ attentionTracksLabel() }}
+        </span>
+      </p>
+      <div
+        class="sidebar-live"
+        *ngIf="
+          liveDownloading ||
+          liveSearching ||
+          liveQueued ||
+          liveRetrying ||
+          (showYoutubePace && paceLine())
+        "
+      >
+        <p
+          class="sidebar-activity"
+          *ngIf="liveDownloading || liveSearching || liveQueued || liveRetrying"
+          [title]="globalActivitySummary()"
+        >
+          <span
+            class="wip-spin"
+            *ngIf="liveDownloading || liveSearching"
+            aria-hidden="true"
+          ></span>
+          <span class="sidebar-activity-text">{{
+            globalActivitySummary()
+          }}</span>
+        </p>
+        <p
+          class="sidebar-pace"
+          *ngIf="showYoutubePace && paceLine()"
+          [title]="paceLine() + (paceNote() ? ' · ' + paceNote() : '')"
+        >
+          {{ paceLine() }}
+          <span class="sidebar-pace-note" *ngIf="paceNote()">
+            · {{ paceNote() }}
+          </span>
+        </p>
+        <div class="sidebar-running" *ngIf="runningPlaylists.length">
+          <button
+            type="button"
+            class="sidebar-now"
+            *ngFor="let p of runningPlaylists"
+            (click)="focus(p, false)"
+            [attr.title]="p.name + ' · ' + activityLabel(p)"
+          >
+            {{ activityLabel(p) }} · {{ p.name }}
+          </button>
+        </div>
+      </div>
+      <p class="sidebar-meta" *ngIf="loading && !data">Loading library…</p>
+
+      <div class="sidebar-actions">
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="downloadRemaining()"
+          [disabled]="bulkActionsBlocked"
+          [attr.title]="
+            ownerBlocksAcquisition
+              ? acquisitionOwnerLabel
+              : hasQueuedWork
+                ? 'The existing search/download queue must finish first'
+                : !liveQueueKnown
+                  ? 'Wait until the live queue is known'
+                  : 'Search for and download every unfinished track'
+          "
+          [attr.aria-describedby]="acquisitionGuardText ? 'queue-guard' : null"
+        >
+          Search &amp; download needed
+        </button>
+        <p class="queue-guard" *ngIf="acquisitionGuardText" id="queue-guard">
+          {{ acquisitionGuardText }}
+        </p>
+        <button
+          type="button"
+          class="btn"
+          (click)="selectIncomplete()"
+          [disabled]="!visiblePlaylists.length"
+        >
+          Select incomplete
+        </button>
+        <button
+          type="button"
+          class="btn"
+          (click)="selectNone()"
+          [disabled]="!selected.size"
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          class="btn"
+          (click)="downloadSelected()"
+          [disabled]="!selected.size || bulkActionsBlocked"
+          [attr.title]="
+            ownerBlocksAcquisition
+              ? acquisitionOwnerLabel
+              : hasQueuedWork
+                ? 'The existing search/download queue must finish first'
+                : !liveQueueKnown
+                  ? 'Wait until the live queue is known'
+                  : 'Search for and download the selected incomplete playlists'
+          "
+          [attr.aria-describedby]="
+            selected.size && acquisitionGuardText ? 'queue-guard' : null
+          "
+        >
+          Download{{ selected.size ? " " + selected.size : "" }}
+        </button>
+      </div>
+
+      <div class="sidebar-search-row">
+        <input
+          class="sidebar-search"
+          type="search"
+          [(ngModel)]="filter"
+          placeholder="Filter playlists"
+          aria-label="Filter playlists"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button
+          type="button"
+          class="text-btn"
+          (click)="refresh()"
+          [disabled]="loading"
+        >
+          Refresh
+        </button>
+        <button
+          type="button"
+          class="text-btn"
+          (click)="syncLibrary()"
+          [disabled]="syncingLibrary"
+        >
+          {{ syncingLibrary ? librarySyncLabel || "Syncing…" : "Sync library" }}
+        </button>
+      </div>
+
+      <div class="sidebar-filters">
+        <label
+          class="chip"
+          title="Hide playlists where every track is already saved. Live search or download work stays visible."
+        >
+          <input type="checkbox" [(ngModel)]="hideComplete" />
+          Hide finished
+        </label>
+        <label class="sort-label">
+          <span class="sort-icon" aria-hidden="true">↕</span>
+          <select
+            class="sort-select"
+            [(ngModel)]="listSort"
+            aria-label="Sort playlists"
+          >
+            <option value="activity">Needs work first</option>
+            <option value="played">Last played</option>
+            <option value="recents">Recents order</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="status-msg" *ngIf="message">{{ message }}</p>
+      <p class="sync-notice" *ngIf="syncNotice" [title]="syncNotice">
+        {{ syncNotice }}
+      </p>
+      <p class="error-msg" *ngIf="error">{{ error }}</p>
+    </div>
+
+    <div
+      class="sidebar-list"
+      #plList
+      role="listbox"
+      tabindex="0"
+      aria-label="Playlist list"
+      aria-multiselectable="true"
+      [attr.aria-activedescendant]="focused ? 'pl-' + focused.id : null"
+      (keydown)="onListKey($event)"
+    >
+      <div
+        class="pl-row"
+        *ngFor="let p of visiblePlaylists; trackBy: trackByUri"
+        role="option"
+        [id]="'pl-' + p.id"
+        [attr.aria-selected]="isSelected(p.uri)"
+        [class.is-focused]="isFocused(p.uri)"
+        [class.is-checked]="isSelected(p.uri)"
+        [class.is-done]="
+          statsOf(p).done && !statsOf(p).failed && !statsOf(p).ripping
+        "
+        [class.is-partial]="
+          statsOf(p).done && statsOf(p).failed && !statsOf(p).ripping
+        "
+        [class.is-ripping]="statsOf(p).ripping"
+        [class.is-running]="runningNow(p)"
+        [attr.aria-label]="playlistOptionLabel(p)"
+        (click)="focus(p)"
+      >
+        <span class="sr-only">{{ playlistOptionLabel(p) }}</span>
+        <input
+          type="checkbox"
+          tabindex="-1"
+          aria-hidden="true"
+          [checked]="isSelected(p.uri)"
+          (click)="toggleCheck(p, $event)"
+        />
+        <span class="pl-body">
+          <span class="pl-name" [title]="p.name">{{ p.name }}</span>
+          <span class="pl-sub" [title]="playlistSubTitle(p)">
+            {{ coverageLine(p, true) }}
+          </span>
+        </span>
+        <span
+          class="state-pill is-done"
+          *ngIf="statsOf(p).done && !statsOf(p).failed && !statsOf(p).ripping"
+          >Done</span
+        >
+        <span
+          class="state-pill is-partial"
+          *ngIf="statsOf(p).done && statsOf(p).failed && !statsOf(p).ripping"
+          >Finished</span
+        >
+        <span
+          class="state-pill"
+          *ngIf="statsOf(p).ripping"
+          [class.is-rip]="runningNow(p)"
+          [class.is-wait]="!runningNow(p)"
+        >
+          <span
+            class="wip-spin"
+            *ngIf="runningNow(p)"
+            aria-hidden="true"
+          ></span>
+          {{ activityLabel(p) }}
+        </span>
+        <span
+          class="state-pill is-needs"
+          *ngIf="!statsOf(p).done && !statsOf(p).ripping"
+        >
+          {{ remainingLabel(p) }}
+        </span>
+        <span
+          class="mini-bar"
+          [attr.title]="
+            statsOf(p).onDisk + '/' + statsOf(p).trackCount + ' on disk'
+          "
+        >
+          <span
+            class="mini-fill avail"
+            [style.width.%]="statsOf(p).percentAvailable"
+          ></span>
+          <span
+            class="mini-fill disk"
+            [style.width.%]="statsOf(p).percentOnDisk"
+          ></span>
+        </span>
+      </div>
+      <p class="empty" *ngIf="!loading && !visiblePlaylists.length">
+        No playlists match.
+      </p>
+    </div>
+  </aside>
+
+  <section class="main" aria-label="Playlist details">
+    <details
+      class="rip-banner ingest-profile"
+      *ngIf="youtubePace?.knownGoodProfile as profile"
+    >
+      <summary>
+        Retained guarded CLI profile: {{ profile.downloadConc }} download +
+        {{ profile.searchConc }} search processes ·
+        {{ profile.maxPerWindow }} admissions / 10 min · measured
+        {{ profile.measuredMp3PerMinute | number: "1.2-2" }} MP3/min ({{
+          profile.measuredMp3PerMinute / profile.baselineMp3PerMinute
+            | number: "1.2-2"
+        }}× baseline)
+      </summary>
+      <p>
+        {{ profile.batchSize }} URLs per batch; {{ profile.searchBuffer }}-job
+        URL-ready buffer. Authenticated {{ profile.downloadClient }} + local POT
+        downloads; {{ profile.searchClient }} searches. MP3 quality 0. Bull job
+        slots fill batches; they are not extra YouTube processes.
+        <span *ngIf="profile.maxSearches != null"
+          >Up to {{ profile.maxSearches }} ranked candidates per track;
+          {{ profile.networkRetries }} additional network retries.</span
+        >
+      </p>
+      <p>
+        Whole-run guarded CLI measurement:
+        {{ profile.measuredWindowMinutes | number: "1.1-1" }} minutes; completed
+        {{ profile.measuredAt | date: "d MMM, HH:mm" : "+0700" }} Bangkok.
+        {{ profile.evidence }}. Web execution has not yet been benchmarked.
+        Preset is retained separately from live pace; installing it does not
+        raise a safety floor, clear admission history or resume queues. Future
+        handback must be deliberate.
+      </p>
+      <p *ngIf="youtubePace?.acquisition">
+        CLI continues independently; its actual live settings appear below and
+        may be a newer trial.
+      </p>
+      <p *ngIf="youtubePace?.webProfileMode === 'custom'">
+        Web transport is in custom mode; the retained preset is not selected.
+      </p>
+      <p>
+        Stored web pace: {{ youtubePace?.downloadConc }} download +
+        {{ youtubePace?.searchConc }} search ·
+        {{ youtubePace?.maxPerWindow }} admissions / 10 min. Persisted pace
+        takes precedence over preset defaults.
+      </p>
+      <button
+        type="button"
+        class="btn"
+        (click)="selectProvenProfile()"
+        [disabled]="!canSelectProvenProfile"
+        title="Requires no CLI owner, both web queues paused and drained, and no safety floor or cooldown. Does not resume queues."
+      >
+        Select retained profile (keep queues paused)
+      </button>
+    </details>
+    <div
+      class="rip-banner acquisition-owner-banner"
+      *ngIf="ownerBlocksAcquisition && !youtubePace?.acquisition"
+    >
+      <div class="rip-title">{{ acquisitionOwnerLabel }}</div>
+      <p>
+        No web work will start until ownership is verified as available. Saved
+        files remain playable.
+      </p>
+    </div>
+    <div
+      class="rip-banner acquisition-banner"
+      *ngIf="youtubePace?.acquisition as cli"
+    >
+      <div class="rip-title">
+        CLI acquisition
+        {{
+          cli.phase === "draining"
+            ? "— draining"
+            : cli.held
+              ? "— recovery wait"
+              : "running"
+        }}
+        <span class="rip-counts">
+          <ng-container *ngIf="cli.currentProfileMp3PerMinute != null">
+            Current trial
+            {{ cli.currentProfileMp3PerMinute | number: "1.2-2" }} MP3/min ·
+            {{ cli.currentProfileBaselineMultiple | number: "1.2-2" }}×
+            baseline<span *ngIf="cli.eta.provisional"> (provisional)</span> ·
+          </ng-container>
+          Whole run
+          {{ cli.mp3PerMinute | number: "1.2-2" }} MP3/min ·
+          {{ cli.baselineMultiple | number: "1.2-2" }}× the 3/min baseline
+        </span>
+      </div>
+      <p>
+        {{ fmt(cli.verifiedNewMp3) }} new ·
+        {{ fmt(cli.remainingUnique) }} unique tracks left ·
+        {{ cli.diskGB | number: "1.2-2" }} GB MP3s (unique files). Web queues
+        preserved and paused; CLI owns YouTube work.
+      </p>
+      <p>
+        Actual CLI: {{ cli.pace.downloadConc }} download +
+        {{ cli.pace.searchConc }} search processes ·
+        {{ cli.pace.maxPerWindow }} download admissions / 10 min. Allowance is
+        not achieved throughput.
+      </p>
+      <p *ngIf="cli.maxSearches != null">
+        Up to {{ cli.maxSearches }} ranked candidates per search ·
+        {{ cli.networkRetryLimit }} additional network retries per workflow.
+        <span *ngIf="cli.noAcceptableCandidate != null"
+          >{{ cli.noAcceptableCandidate }} no acceptable candidate ·
+        </span>
+        <span *ngIf="cli.candidateDisqualifications != null"
+          >{{ cli.candidateDisqualifications }} candidate disqualifications ·
+        </span>
+        <span *ngIf="cli.networkRetries != null"
+          >{{ cli.networkRetries }} network retries ·
+        </span>
+        <span *ngIf="cli.operationRetries != null"
+          >{{ cli.operationRetries }} operation retries.</span
+        >
+        Candidate disqualifications do not consume network retries.
+      </p>
+      <p>
+        Bulk ETA<span *ngIf="cli.eta.rateUsedPerMinute">
+          at {{ cli.eta.rateUsedPerMinute | number: "1.2-2" }} MP3/min</span
+        >:
+        {{
+          cli.eta.continuous
+            ? (cli.eta.continuous | date: "d MMM, HH:mm" : "+0700") + " Bangkok"
+            : "measuring recovery rate"
+        }}.
+        <span *ngIf="cli.eta.provisional && cli.eta.continuous"
+          >New-trial projection.</span
+        >
+        With 25% buffer:
+        {{
+          cli.eta.buffered25
+            ? (cli.eta.buffered25 | date: "d MMM, HH:mm" : "+0700") + " Bangkok"
+            : "not yet available"
+        }}.
+        <span *ngIf="cli.contentReviewPendingUnique"
+          >{{ cli.contentReviewPendingUnique }} recording corrections not
+          included in ETA.</span
+        >
+      </p>
+    </div>
+    <div class="rip-banner" *ngIf="activeRips.length">
+      <div class="rip-title">
+        In progress
+        <span class="rip-counts">
+          {{ runningActivitySummary() }}
+        </span>
+      </div>
+      <button
+        type="button"
+        class="rip-row"
+        *ngFor="let t of activeRips"
+        (click)="focusLiveTrack(t)"
+        [attr.aria-label]="
+          'Show ' +
+          (t.playlistName || t.name) +
+          (t.playlistName ? ' · ' + t.artist + ' — ' + t.name : '')
+        "
+      >
+        <span class="rip-name" [title]="t.artist + ' — ' + t.name"
+          >{{ t.artist }} — {{ t.name }}</span
+        >
+        <span class="rip-pl" *ngIf="t.playlistName" [title]="t.playlistName">{{
+          t.playlistName
+        }}</span>
+        <span class="rip-meta" [title]="ripLabel(t)">{{ ripLabel(t) }}</span>
+        <span class="rip-bar" *ngIf="t.status === statuses.Downloading">
+          <span class="rip-fill" [style.width.%]="t.percent"></span>
+        </span>
+      </button>
+    </div>
+
+    <ng-container *ngIf="focused as p; else noFocus">
+      <div class="detail-head">
+        <div class="detail-copy">
+          <h1 class="detail-title" [title]="p.name">
+            {{ p.name }}
+            <span
+              class="done-badge"
+              *ngIf="
+                statsOf(p).done && !statsOf(p).failed && !statsOf(p).ripping
+              "
+              >Done</span
+            >
+            <span
+              class="done-badge is-partial"
+              *ngIf="
+                statsOf(p).done && statsOf(p).failed && !statsOf(p).ripping
+              "
+              >Finished</span
+            >
+            <span class="done-badge is-wip" *ngIf="statsOf(p).ripping">
+              <span
+                class="wip-spin"
+                *ngIf="runningNow(p)"
+                aria-hidden="true"
+              ></span>
+              {{ activityLabel(p) }}
+            </span>
+          </h1>
+          <p class="detail-sub">
+            Recents rank {{ p.rank }} · {{ statsOf(p).onDisk }}/{{
+              p.trackCount
+            }}
+            on disk
+            <ng-container *ngIf="statsOf(p).failed">
+              · {{ statsOf(p).failed }} missing</ng-container
+            >
+            <ng-container *ngIf="statsOf(p).copyable">
+              · {{ fmt(statsOf(p).copyable) }} copyable</ng-container
+            >
+            <ng-container *ngIf="!statsOf(p).ripping && statsOf(p).needsRetry">
+              · {{ fmt(statsOf(p).needsRetry) }} needs retry</ng-container
+            >
+            <ng-container *ngIf="statsOf(p).ripping">
+              · {{ activitySummary(p) }}
+            </ng-container>
+            ·
+            <a
+              class="spotify-link"
+              [href]="p.spotifyUrl"
+              target="spooty-spotify"
+              rel="noopener noreferrer"
+              >Spotify</a
+            >
+          </p>
+          <p
+            class="done-banner"
+            *ngIf="statsOf(p).done && !statsOf(p).failed && !statsOf(p).ripping"
+          >
+            All tracks downloaded
+          </p>
+          <p
+            class="done-banner is-partial"
+            *ngIf="statsOf(p).done && statsOf(p).failed && !statsOf(p).ripping"
+          >
+            Finished · {{ statsOf(p).onDisk }}/{{ p.trackCount }} on disk ·
+            {{ statsOf(p).failed }} missing
+          </p>
+        </div>
+        <div class="detail-actions">
+          <button
+            type="button"
+            class="btn btn-primary btn-lg"
+            *ngIf="
+              !statsOf(p).done &&
+              !statsOf(p).ripping &&
+              (statsOf(p).pending || statsOf(p).copyable)
+            "
+            (click)="downloadFocused()"
+            [disabled]="
+              enqueueing ||
+              ownerBlocksAcquisition ||
+              !liveQueueKnown ||
+              !acquisitionOptionsValid
+            "
+            [title]="acquisitionGuardText"
+          >
+            {{ focusedActionLabel(p) }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-lg"
+            *ngIf="statsOf(p).ripping"
+            disabled
+            [attr.title]="
+              activitySummary(p) +
+              ' · ' +
+              statsOf(p).onDisk +
+              '/' +
+              statsOf(p).trackCount
+            "
+          >
+            {{ activitySummary(p, true) }}
+            · {{ statsOf(p).onDisk }}/{{ statsOf(p).trackCount }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-lg retry-errors"
+            [class.btn-primary]="!statsOf(p).pending && !statsOf(p).copyable"
+            *ngIf="focusedErrorCount && !statsOf(p).ripping"
+            (click)="retryFocusedErrors()"
+            [disabled]="
+              enqueueing ||
+              ownerBlocksAcquisition ||
+              !liveQueueKnown ||
+              !acquisitionOptionsValid
+            "
+            [title]="
+              acquisitionGuardText ||
+              'Explicitly retry operational failures only; confirmed misses and exhausted searches stay unchanged'
+            "
+          >
+            Retry {{ focusedErrorCount }} failed
+          </button>
+          <button
+            type="button"
+            *ngIf="
+              (statsOf(p).failed || focusedNoCandidateCount) &&
+              !statsOf(p).ripping
+            "
+            (click)="retryFocusedOutcomes()"
+            [disabled]="
+              enqueueing ||
+              ownerBlocksAcquisition ||
+              !liveQueueKnown ||
+              !acquisitionOptionsValid
+            "
+            [title]="
+              acquisitionGuardText ||
+              'Explicitly retry confirmed misses and exhausted candidate searches in this playlist'
+            "
+            class="btn btn-lg retry-outcomes"
+          >
+            Retry
+            <span *ngIf="statsOf(p).failed"
+              >{{ statsOf(p).failed }} missing</span
+            ><span *ngIf="statsOf(p).failed && focusedNoCandidateCount">
+              + </span
+            ><span *ngIf="focusedNoCandidateCount"
+              >{{ focusedNoCandidateCount }} exhausted searches</span
+            >
+          </button>
+          <button
+            type="button"
+            class="btn btn-lg"
+            (click)="resyncFocused()"
+            [disabled]="resyncing"
+            [title]="
+              'Replace the local dump of ' +
+              p.name +
+              ' with the live Spotify track list'
+            "
+          >
+            {{ resyncing ? "Resyncing…" : "Resync from Spotify" }}
+          </button>
+        </div>
+      </div>
+
+      <details class="acquisition-options">
+        <summary>
+          Acquisition options · {{ maxSearches }} candidates ·
+          {{ networkRetries }} network retries
+        </summary>
+        <label
+          >Ranked candidates per track
+          <input
+            type="number"
+            min="1"
+            max="50"
+            step="1"
+            [(ngModel)]="maxSearches"
+            [disabled]="enqueueing || ownerBlocksAcquisition"
+          />
+        </label>
+        <label
+          >Additional network retries
+          <input
+            type="number"
+            min="0"
+            max="20"
+            step="1"
+            [(ngModel)]="networkRetries"
+            [disabled]="enqueueing || ownerBlocksAcquisition"
+          />
+        </label>
+        <p>
+          Applies to new web work only; does not change a running CLI. Normal
+          download skips failed work, Missing, and exhausted searches at
+          unchanged depth. The separate retry actions explicitly reopen each
+          kind; increasing candidate depth reopens exhausted searches.
+          Wrong-length candidates do not use network retries.
+        </p>
+        <p *ngIf="!acquisitionOptionsValid">
+          Use 1–50 candidates and 0–20 additional network retries.
+        </p>
+      </details>
+
+      <div class="coverage" *ngIf="p.trackCount">
+        <div class="bars big">
+          <div
+            class="bar avail"
+            [style.width.%]="statsOf(p).percentAvailable"
+          ></div>
+          <div
+            class="bar disk"
+            [style.width.%]="statsOf(p).percentOnDisk"
+          ></div>
+        </div>
+        <p class="legend">
+          <span class="swatch disk"></span> in this folder
+          <span class="swatch avail"></span> already ripped elsewhere (copy, no
+          re-download)
+        </p>
+      </div>
+
+      <div class="track-wrap" #trackWrap [class.is-loading]="detailLoading">
+        <ng-container *ngIf="detail as d">
+          <table class="tracks" *ngIf="d.tracks.length">
+            <thead>
+              <tr>
+                <th class="col-n">#</th>
+                <th>Track</th>
+                <th class="col-play">Play</th>
+                <th class="col-file">File</th>
+                <th class="col-status">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let t of d.tracks"
+                [class.is-playing]="isPlaying(t)"
+                [class.is-playable]="isPlayable(t)"
+                [class.is-wip]="
+                  statusKind(t) === 'rip' || statusKind(t) === 'search'
+                "
+                [attr.tabindex]="isPlayable(t) ? 0 : null"
+                [attr.title]="
+                  isPlayable(t) ? 'Click to play ' + t.filename : null
+                "
+                (click)="playTrack(t, $event)"
+                (keydown)="onTrackKey(t, $event)"
+              >
+                <td class="col-n">{{ t.n }}</td>
+                <td>
+                  <span class="track-name">{{ t.name }}</span>
+                  <span class="track-artist">{{ t.artist }}</span>
+                  <span
+                    class="track-err"
+                    *ngIf="
+                      statusKind(t) === 'error' ||
+                      statusKind(t) === 'retry' ||
+                      statusKind(t) === 'no-candidate' ||
+                      statusKind(t) === 'scheduled'
+                    "
+                  >
+                    {{
+                      errorText(t) ||
+                        (statusKind(t) === "error"
+                          ? "Not found on YouTube"
+                          : "")
+                    }}
+                  </span>
+                  <span class="track-err" *ngIf="candidateEvidence(t)">{{
+                    candidateEvidence(t)
+                  }}</span>
+                </td>
+                <td class="col-play">
+                  <button
+                    type="button"
+                    class="play-btn"
+                    *ngIf="isPlayable(t)"
+                    (click)="playTrack(t, $event)"
+                    [attr.aria-label]="
+                      (isPlaying(t) && !playbackPaused() ? 'Pause ' : 'Play ') +
+                      t.filename
+                    "
+                  >
+                    {{ isPlaying(t) && !playbackPaused() ? "Pause" : "Play" }}
+                  </button>
+                </td>
+                <td class="col-file">
+                  <span class="track-file is-ready" *ngIf="isPlayable(t)">{{
+                    t.filename
+                  }}</span>
+                </td>
+                <td class="col-status">
+                  <ng-container [ngSwitch]="statusKind(t)">
+                    <span class="pill on" *ngSwitchCase="'disk'">on disk</span>
+                    <span class="pill search" *ngSwitchCase="'search'">
+                      <span class="wip-spin" aria-hidden="true"></span>
+                      Finding on YouTube
+                    </span>
+                    <span class="pill waiting" *ngSwitchCase="'queue'"
+                      >Waiting</span
+                    >
+                    <span
+                      class="pill retry"
+                      *ngSwitchCase="'scheduled'"
+                      [title]="errorText(t)"
+                      >Retry scheduled</span
+                    >
+                    <span class="pill dl" *ngSwitchCase="'rip'">
+                      <span
+                        class="dl-fill"
+                        [style.width.%]="statusPercent(t)"
+                      ></span>
+                      <span class="dl-label">
+                        <span class="wip-spin" aria-hidden="true"></span>
+                        {{ trackStatusLabel(t) }}
+                      </span>
+                    </span>
+                    <span
+                      class="pill miss"
+                      *ngSwitchCase="'error'"
+                      [title]="errorText(t)"
+                      >Missing</span
+                    >
+                    <span
+                      class="pill retry"
+                      *ngSwitchCase="'retry'"
+                      [title]="errorText(t)"
+                      >Needs retry</span
+                    >
+                    <span
+                      class="pill retry"
+                      *ngSwitchCase="'no-candidate'"
+                      [title]="candidateEvidence(t)"
+                      >No acceptable candidate</span
+                    >
+                    <span class="pill copy" *ngSwitchCase="'copy'"
+                      >copyable</span
+                    >
+                    <span class="pill pending" *ngSwitchDefault>Pending</span>
+                  </ng-container>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="empty" *ngIf="!detailLoading && !d.tracks.length">
+            No tracks in this dump.
+          </p>
+        </ng-container>
+        <p class="empty" *ngIf="detailLoading && !detail">Loading tracks…</p>
+      </div>
+    </ng-container>
+    <ng-template #noFocus>
+      <p class="empty pad">Select a playlist on the left.</p>
+    </ng-template>
+
+    <div class="player-bar" *ngIf="audioUrl">
+      <span class="player-label" [title]="playingLabel">{{
+        playingLabel
+      }}</span>
+      <audio
+        #player
+        [src]="audioUrl"
+        controls
+        autoplay
+        (play)="onAudioPlay()"
+        (pause)="onAudioPause()"
+        (ended)="onAudioEnded()"
+      ></audio>
+      <button
+        type="button"
+        class="player-close"
+        (click)="stopPlayback()"
+        aria-label="Close player"
+      >
+        Close
+      </button>
+    </div>
+
+    <div
+      class="live-queue"
+      *ngIf="queue$ | async as queue"
+      [class.is-open]="queueOpen"
+    >
+      <button
+        type="button"
+        class="queue-toggle"
+        (click)="toggleQueue()"
+        [attr.title]="liveQueueMeta(queue.length)"
+      >
+        <span>Live queue</span>
+        <span class="queue-meta">
+          {{ liveQueueMeta(queue.length) }}
+          <span class="caret">{{ queueOpen ? "▾" : "▸" }}</span>
+        </span>
+      </button>
+      <div class="queue-body" *ngIf="queueOpen">
+        <p class="legend">
+          {{
+            impliedWaitingPlaylistCount
+              ? "Live search/download jobs. Other waiting leftovers stay in the playlist list."
+              : "Playlists with live or scheduled YouTube search/download work."
+          }}
+        </p>
+        <button
+          type="button"
+          class="queue-pl"
+          *ngFor="let playlist of queue"
+          (click)="focusQueuePlaylist(playlist)"
+        >
+          <span class="queue-pl-name">{{ playlist.name }}</span>
+          <span class="queue-pl-meta">{{ queueActivity(playlist) }}</span>
+        </button>
+        <p *ngIf="!queue.length" class="empty">Nothing queued.</p>
+      </div>
+    </div>
+  </section>
+</div>

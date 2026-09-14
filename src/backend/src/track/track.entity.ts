@@ -8,6 +8,7 @@ export enum TrackStatusEnum {
   Downloading,
   Completed,
   Error,
+  RetryWaiting,
 }
 
 @Entity()
@@ -23,6 +24,41 @@ export class TrackEntity {
 
   @Column({ nullable: true })
   spotifyUrl: string;
+
+  @Column({ type: 'integer', nullable: true })
+  durationMs?: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  acquisitionState?: 'no-candidate' | 'missing' | 'retry' | 'failed' | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  retryAt?: number | null;
+
+  @Column({ type: 'integer', default: 0 })
+  searchLimit?: number;
+
+  @Column({ type: 'integer', default: 10 })
+  maxSearches?: number;
+
+  @Column({ type: 'integer', default: 5 })
+  networkRetryLimit?: number;
+
+  @Column({ type: 'integer', default: 0 })
+  networkAttempts?: number;
+
+  @Column({ type: 'integer', default: 0 })
+  operationAttempts?: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  youtubeCandidates?: Array<{
+    url: string;
+    videoId: string;
+    durationSeconds: number | null;
+    title: string;
+  }> | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  sourceEvidence?: any;
 
   @Column({ nullable: true })
   youtubeUrl?: string;

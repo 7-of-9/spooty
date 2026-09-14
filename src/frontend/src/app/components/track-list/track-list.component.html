@@ -2,12 +2,14 @@
   <div>
     <span>{{ track.artist }} - {{ track.name }}</span>&nbsp;
     <a [href]="track.spotifyUrl"
-       target="_blank"
+       target="spooty-spotify"
+       rel="noopener noreferrer"
        class="has-text-primary margin-left" title="Spotify preview of track that will be downloaded">
       <i class="fa-brands fa-spotify"></i>
     </a>&nbsp;
     <a [href]="track.youtubeUrl"
-       target="_blank"
+       target="spooty-spotify"
+       rel="noopener noreferrer"
        class="has-text-danger is-color-black" title="Youtube searched track that will be downloaded">
       <i class="fa-brands fa-youtube"></i>
     </a>&nbsp;

@@ -10,6 +10,23 @@ It can also subscribe to a playlist or author page and download new songs upon r
 Spooty basically downloads nothing from Spotify, it only gets information from spotify and then finds relevant and downloadeds music on Youtube. 
 The project is based on NestJS and Angular.
 
+## CLI and website
+
+This fork supports two first-class entry points to the shared acquisition stack:
+the local website at `http://127.0.0.1:4200/` and the **[Spooty CLI](scripts/acquire/README.md)**.
+Use Node **20.19.4** (`nvm use`), then:
+
+```sh
+npm run acquire -- doctor
+npm run acquire -- plan
+npm run acquire -- run --limit 8
+```
+
+The CLI reference covers every command/option, skip and retry semantics,
+prerequisites, durable state, graceful web/CLI ownership transfer and the
+shared duration-checked pipeline. [ACQUIRE.md](ACQUIRE.md) retains historical
+benchmark/audit notes; its old trial commands are not the default restart recipe.
+
 > [!IMPORTANT]
 > Please do not use this tool for piracy! Download only music you own rights! Use this tool only on your responsibility.
 
@@ -29,7 +46,7 @@ Recommended and the easiest way how to start to use of Spooty is using docker.
 
 > [!NOTE]
 > This fork does not require a Spotify Developer application. It reads playlist
-> metadata using an anonymous Spotify embed token, so there is no
+> saved and authenticated web-player metadata, so there is no
 > `SPOTIFY_CLIENT_ID` or `SPOTIFY_CLIENT_SECRET` to configure.
 
 ### Docker
@@ -74,13 +91,13 @@ services:
 Spooty can be also build from source files on your own.
 
 #### Requirements
-- Node v20.20.0 (it is recommended to use `nvm` node version manager to install proper version of node)
+- Node v20.19.4 (use the repository `.nvmrc` with `nvm use`)
 - Redis in memory cache
 - Ffmpeg
 - Python3
 
 #### Process
-- install Node v20.20.0 using `nvm install` and use that node version `nvm use`
+- install Node v20.19.4 using `nvm install` and use that node version `nvm use`
 - from project root install all dependencies using `npm install`
 - copy `.env.default` as `.env` in `src/backend` folder and modify desired environment properties (see [environment variables](#environment-variables))
 - build source files `npm run build`
@@ -92,32 +109,49 @@ Spooty can be also build from source files on your own.
 Some behaviour and settings of Spooty can be configured using environment variables and `.env` file.
 
 > [!IMPORTANT]
-> `DOWNLOAD_CONCURRENCY`, `DOWNLOAD_GAP_MS` and `SEARCH_CONCURRENCY` are the
-> exception: they are read at module-import time, before the `.env` file is
-> loaded, so putting them in `.env` has no effect. Pass them as real environment
-> variables (`docker run -e ...`, compose `environment:`, or `export`). All
-> other variables in this table work in `.env` as usual.
+> `YT_WEB_PROFILE` and custom Bull worker concurrency are read at module-import
+> time. Export them before starting Nest. The default `cli-proven` profile uses
+> the shared, duration-guarded MP3 pipeline; see the CLI reference for its current
+> profile, path defaults and safety behavior. Old per-web extractor/client/batch
+> knobs no longer define a second pipeline.
 
  Name                 | Default                                     | Description                                                                                                                                   |
 ----------------------|---------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
  DB_PATH              | `./config/db.sqlite` (relative to backend)  | Path where Spooty database will be stored                                                                                                     |
  FE_PATH              | `../frontend/browser` (relative to backend) | Path to frontend part of application                                                                                                          |
  DOWNLOADS_PATH       | `./downloads` (relative to backend)         | Path where downaloded files will be stored                                                                                                    |
- FORMAT               | `mp3`                                       | Format of downloaded files ('aac', 'flac', 'mp3', 'm4a', 'opus', 'vorbis', 'wav', 'alac')                                                     |
- QUALITY              | undefined                                   | Audio quality (0-9 VBR or specific bitrate) of downloaded files                                                                               |
+ FORMAT               | `mp3`                                       | Shared ingest publishes MP3; other formats are rejected, not silently mislabeled. |
+ QUALITY              | `0`                                         | Shared ingest uses best VBR MP3 quality0. Other values are rejected. |
  PORT                 | 3000                                        | Port of Spooty server                                                                                                                         |
+ BIND_HOST            | 127.0.0.1                                   | Interface address for the unauthenticated local API. Keep loopback unless an authenticated reverse proxy is intentionally added.             |
  REDIS_PORT           | 6379                                        | Port of Redis server                                                                                                                          |
  REDIS_HOST           | localhost                                   | Host of Redis server                                                                                                                          |
  REDIS_RUN            | false                                       | Whenever Redis server should be started from backend (recommended for Docker environment)                                                     |
- DOWNLOAD_CONCURRENCY | 2                                           | How many downloads may run at once. Raising this makes YouTube rate limiting much more likely.                                                 |
- DOWNLOAD_GAP_MS      | 3000                                        | Minimum milliseconds between the start of one download and the next. Together with the above this caps throughput at ~20 downloads/min.        |
- SEARCH_CONCURRENCY   | 3                                           | How many YouTube searches may run at once.                                                                                                    |
+ YT_WEB_PROFILE | `cli-proven` | Shared reviewed profile; `custom` opts out of its authenticated route and Bull slot defaults, not out of duration/safety checks. |
+ DOWNLOAD_CONCURRENCY | 32 logical jobs in retained profile | Custom-profile Bull download slots only; the shared pace gate separately limits actual yt-dlp processes. |
+ SEARCH_CONCURRENCY | 8 logical jobs in retained profile | Custom-profile Bull search slots only; the shared pace gate separately limits actual yt-dlp processes. |
+ ACQUIRE_STATE_PATH | `data/acquire` under this checkout | CLI/web shared work journal and rejection history; must point to the same directory. |
+ YT_POT_RECOVERY_ENABLED | on in retained profile | Enable the existing pinned bgutil2.0.0 plugin/provider for authenticated downloads in custom mode. |
+ YT_JS_RUNTIME_PATH | local Node22.13.0 path | Executable used only by yt-dlp's JavaScript solver; Nest and CLI remain on Node20.19.4. |
+ YT_REPEAT_BOT_COOLDOWN_MIN_MS | 900000                             | Minimum cooldown after another confirmed block while already at the safety floor.                                                            |
+ YT_REPEAT_BOT_COOLDOWN_MAX_MS | 1800000                            | Maximum cooldown after another confirmed block while already at the safety floor.                                                            |
+ YT_REPEAT_BOT_WINDOW_MS | 3600000                                  | How recently a prior confirmed block must have occurred to use the longer repeated-floor cooldown.                                            |
+
+The optional POT recovery route expects the pinned 2.0.0 provider to be running
+under Node 20.19.4 as `node build/main.js --host 127.0.0.1 --port 4416`. Start
+and health-check that process before enabling the flag. The shared stack pins
+the plugin under `data/yt-dlp-plugins` and the provider to that loopback endpoint.
+Authenticated downloads use `mweb` + POT when enabled; authenticated searches
+use `web_creator`, and anonymous requests explicitly use `visionos`.
+The installed reviewed release does not support `android_sdkless`.
+Set `YT_JS_RUNTIME_PATH` to Node 22 or newer so yt-dlp can solve current EJS
+challenges while the Nest application continues to run under Node 20.19.4.
 
 > [!WARNING]
-> YouTube rate-limits a session for up to an hour after roughly 100 rapid
-> downloads, and tracks that fail this way stay in an error state until they are
-> retried. The defaults above are deliberately conservative for that reason.
-> Raise them only if you are willing to trade stalled downloads for speed.
+> A genuine YouTube block immediately kills owned yt-dlp work and trips the
+> shared one-process,8-admissions/ten-minute safety floor with a cooldown.
+> Network failures and candidate disqualifications are accounted separately.
+> Restarts preserve this history; monitor output before explicitly changing pace.
 
 ### How to supply your YouTube cookies
 

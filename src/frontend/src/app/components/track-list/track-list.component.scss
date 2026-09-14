@@ -1,11 +1,13 @@
 .hover-icon {
-  display: none;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.hover-icon:hover {
+  opacity: 1;
 }
 
 .panel-block {
   padding: 5px 10px;
-
-  &:hover .hover-icon {
-    display: inline;
-  }
+  color: #111318 !important;
 }

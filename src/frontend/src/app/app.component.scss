@@ -1,0 +1,46 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #0f1114;
+  color: #fff;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.topbar-sub {
+  font-size: 12px;
+  color: #9aa3af;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .topbar-sub {
+    display: none;
+  }
+}
+
+.app-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}

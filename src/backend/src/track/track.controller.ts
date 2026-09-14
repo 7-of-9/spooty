@@ -19,6 +19,11 @@ export class TrackController {
     private readonly configService: ConfigService,
   ) {}
 
+  @Get('active')
+  getActive(): Promise<TrackEntity[]> {
+    return this.service.getActive();
+  }
+
   @Get('playlist/:id')
   getAllByPlaylist(@Param('id') playlistId: number): Promise<TrackEntity[]> {
     return this.service.getAllByPlaylist(playlistId);
@@ -46,7 +51,7 @@ export class TrackController {
   }
 
   @Get('retry/:id')
-  retry(@Param('id') id: number): Promise<void> {
+  retry(@Param('id') id: number): Promise<boolean> {
     return this.service.retry(id);
   }
 }

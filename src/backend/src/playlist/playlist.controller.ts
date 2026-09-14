@@ -19,6 +19,11 @@ export class PlaylistController {
     return this.service.findAll();
   }
 
+  @Get('summary')
+  getSummary(): Promise<PlaylistEntity[]> {
+    return this.service.findAll({});
+  }
+
   @Post()
   async create(@Body() playlist: PlaylistEntity): Promise<void> {
     await this.service.create(playlist);
