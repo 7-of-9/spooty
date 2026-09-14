@@ -39,7 +39,9 @@ It matches the same public reference in both official templates inspected:
 - `nestjs/schematics/src/lib/application/files/ts/README.md`, blob
   `a1f8e352875f94adbaa9da608d0fecd0a56f71d8`.
 
-The reference is not a credential belonging to this fork. `.gitleaksignore`
+The current backend README has been replaced with Spooty-specific documentation,
+so the committed file tree contains no copy of that badge reference.
+The historical reference is not a credential belonging to this fork. `.gitleaksignore`
 records only that exact historical fingerprint. There is no directory-wide,
 rule-wide or current-file suppression. The token-shaped value is not repeated
 in this document. The inherited `spooty-be/test.sqlite` fixture, removed by

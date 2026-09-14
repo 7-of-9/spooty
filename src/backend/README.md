@@ -1,73 +1,59 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+# Spooty backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The NestJS backend serves the saved-library API, Spotify metadata integration,
+local audio playback and BullMQ acquisition workers. It shares its download
+engine with the first-class CLI; this is not a separate yt-dlp implementation.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+See the [main README](../../README.md) for setup, supported platforms and all
+fork extensions, and the [CLI reference](../../scripts/acquire/README.md) for
+the complete command/option and resume contract.
 
-## Description
+## Components
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- `library/`: saved playlist catalog, disk coverage, resync, acquisition
+  requests and range-capable local MP3 responses.
+- `track/`: durable track state, queue scheduling, local-file reuse and separate
+  handling of candidate outcomes, network failures and operational failures.
+- `shared/acquisition/`: common CLI/web process transport, source evidence,
+  duration/candidate policies, private cookie handling, filename identity,
+  verification, tagged atomic publication and the cross-entry work journal.
+- `shared/acquisition-owner*`: exclusive CLI/web ownership and request guards.
+- `shared/youtube-pace*`: separate search/download pools, admission limits,
+  persistent safety-floor/cooldown state and live pace reporting.
+- `shared/spotify-*` and `cdp-proxy.client*`: logged-in Spotify metadata through
+  the persistent loopback Chrome bridge, caching and request gating.
 
-## Installation
+## Run and test
 
-```bash
-$ npm install
+From the repository root, using Node **20.19.4** and the shared absolute-path
+environment configuration described in the main README:
+
+```sh
+npm run start:be
+npm run test -w backend -- --runInBand
+npm run build:be
 ```
 
-## Running the app
+The default API is `http://127.0.0.1:3000/api`. Development browser traffic uses
+the Angular proxy on port4200. Redis must be available for queue operations.
+The API has no built-in authentication: keep it on loopback.
 
-```bash
-# development
-$ npm run start
+Keep `DB_PATH` outside `dist/`, because watch builds replace compiled output.
+The CLI and web backend must agree on `DB_PATH`, `DOWNLOADS_PATH`,
+`STATIC_PLAYLISTS_PATH`, `ACQUIRE_STATE_PATH` and the Redis instance. Runtime
+state, playlists and media are not shipped in this repository.
 
-# watch mode
-$ npm run start:dev
+## Safety and verification
 
-# production mode
-$ npm run start:prod
-```
+Normal acquisition fast-skips saved files and parked outcomes. Wrong-length
+candidates advance selection without consuming network retries. A genuine
+YouTube block stops owned processes immediately and retains the shared safety
+floor/cooldown. No route may start web acquisition while a CLI owns the lease.
 
-## Test
+The shared-engine consolidation checkpoint passed **182 backend tests in
+32 suites**, plus typechecking. Tests default-deny real subprocess/network
+acquisition; controlled fixtures exercise actual local ffprobe, ID3 tagging
+and publication without downloading remote audio. Do not use the real saved
+library or unpause a production queue just to run tests.
 
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](LICENSE).
+See [SECURITY.md](../../SECURITY.md) for cookie handling and publication checks.
