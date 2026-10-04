@@ -11,9 +11,10 @@ import {
   withEntities,
 } from '@ngneat/elf-entities';
 import { Socket } from 'ngx-socket-io';
-import { BehaviorSubject, map, Observable, tap } from 'rxjs';
+import { BehaviorSubject, map, Observable, Subject, tap } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { Track, TrackStatusEnum } from '../models/track';
+import { spotifySourceId } from '../../../../backend/src/shared/acquisition/source-id';
 
 const STORE_NAME = 'track';
 const ENDPOINT = '/api/track';
@@ -35,6 +36,8 @@ export class TrackService {
   readonly all$ = this.store.pipe(selectAllEntities());
   private readonly activeReadySubject = new BehaviorSubject(false);
   readonly activeReady$ = this.activeReadySubject.asObservable();
+  private readonly coverageChanges = new Subject<void>();
+  readonly coverageChanges$ = this.coverageChanges.asObservable();
 
   getAllByPlaylist(id: number, status?: TrackStatusEnum): Observable<Track[]> {
     return this.store.pipe(
@@ -141,7 +144,7 @@ export class TrackService {
           const incomingKeys = new Set(
             errors.map(
               (track) =>
-                `${track.playlistId}\0${track.artist}\0${track.name}`.toLowerCase(),
+                `${track.playlistId}\0${this.sourceIdentity(track)}`,
             ),
           );
           const staleSynthetic = this.store
@@ -151,7 +154,7 @@ export class TrackService {
                 track.id < 0 &&
                 track.status === TrackStatusEnum.Error &&
                 incomingKeys.has(
-                  `${track.playlistId}\0${track.artist}\0${track.name}`.toLowerCase(),
+                  `${track.playlistId}\0${this.sourceIdentity(track)}`,
                 ),
             )
             .map((track) => track.id);
@@ -177,13 +180,14 @@ export class TrackService {
     artist: string;
     name: string;
     error: string;
+    spotifyUrl?: string;
   }): void {
-    const key = `${input.artist}\0${input.name}`.toLowerCase();
+    const key = this.sourceIdentity(input);
     const existing = this.store.query(getAllEntities()).find(
       (track) =>
         track.playlistId === input.playlistId &&
         track.status === TrackStatusEnum.Error &&
-        `${track.artist}\0${track.name}`.toLowerCase() === key,
+        this.sourceIdentity(track) === key,
     );
     if (existing) {
       if (existing.error !== input.error) {
@@ -200,10 +204,11 @@ export class TrackService {
             input.playlistId,
             input.artist,
             input.name,
+            input.spotifyUrl,
           ),
           artist: input.artist,
           name: input.name,
-          spotifyUrl: '',
+          spotifyUrl: input.spotifyUrl || '',
           youtubeUrl: '',
           status: TrackStatusEnum.Error,
           error: input.error,
@@ -217,8 +222,9 @@ export class TrackService {
     playlistId: number,
     artist: string,
     name: string,
+    spotifyUrl?: string,
   ): number {
-    const key = `${playlistId}|||${artist}|||${name}`;
+    const key = `${playlistId}|||${this.sourceIdentity({ artist, name, spotifyUrl })}`;
     let hash = 0;
     for (let i = 0; i < key.length; i++) {
       hash = (hash * 31 + key.charCodeAt(i)) | 0;
@@ -226,7 +232,14 @@ export class TrackService {
     return hash === 0 ? -1 : -Math.abs(hash);
   }
 
+  private sourceIdentity(track: { artist: string; name: string; spotifyUrl?: string }): string {
+    const id = spotifySourceId(track.spotifyUrl);
+    return id ? `spotify:${id}` : `${track.artist}\0${track.name}`.toLowerCase();
+  }
+
   private initWsConnection(): void {
+    this.socket.on('libraryCoverageChanged', () => this.zone.run(() => this.coverageChanges.next()));
+    this.socket.on('connect', () => this.zone.run(() => this.coverageChanges.next()));
     this.socket.on(WsTrackOperation.Update, (track: Track) => {
       this.zone.run(() => {
         const current = this.store.query(getEntity(track.id));

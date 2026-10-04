@@ -59,4 +59,5 @@ export function webAdapterFixture() {
 
 export const videoUrl = (id: string) => 'https://www.youtube.com/watch?v=' + id;
 export const searchDocument = (query: string, entries: any[], limit = 10) =>
-  JSON.stringify({ original_url: 'ytsearch' + limit + ':' + query, entries });
+  JSON.stringify({ original_url: 'ytsearch' + limit + ':' + query,
+    entries: entries.map(entry => ({ title: query, ...entry })) });

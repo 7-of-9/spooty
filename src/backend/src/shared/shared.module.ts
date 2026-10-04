@@ -9,6 +9,7 @@ import { SpotifySessionService } from './spotify-session.service';
 import { YoutubePaceController } from './youtube-pace.controller';
 import { AcquisitionOwner } from './acquisition-owner';
 import { SpotifyDurationService } from './spotify-duration.service';
+import { DownloadLocationController } from './download-location.controller';
 
 @Module({
   imports: [ConfigModule],
@@ -22,7 +23,7 @@ import { SpotifyDurationService } from './spotify-duration.service';
     CdpProxyClient,
     SpotifySessionService,
   ],
-  controllers: [YoutubePaceController],
+  controllers: [YoutubePaceController, DownloadLocationController],
   exports: [
     SpotifyDurationService,
     AcquisitionOwner,

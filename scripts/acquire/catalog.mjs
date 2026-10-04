@@ -5,14 +5,15 @@ import {
   statSync,
   existsSync,
 } from "node:fs";
-import { resolve, join, basename, sep } from "node:path";
+import { resolve, join, basename, sep, dirname } from "node:path";
 import { positiveDurationMs } from './spotify-duration.mjs';
 export { materialize } from './publication.mjs';
 
 const require = createRequire(import.meta.url);
 const sqlite3 = require("sqlite3");
 // The shared-module wrappers above initialize the TypeScript loader.
-export const { safe, fileBase, songKey } = require('../../src/backend/src/shared/acquisition/identity.ts');
+export const { safe, fileBase, songKey, sourceKey, sourceFileBase, sourceJournal, trackSourceId } = require('../../src/backend/src/shared/acquisition/identity.ts');
+const { LocalMediaIndex, mediaDurationCache } = require('../../src/backend/src/shared/acquisition/local-media.ts');
 
 export function database(path, readonly = false) {
   let opened;
@@ -107,7 +108,7 @@ export function scanAudio(root) {
   return { byKey, bytes, gb: bytes / 1e9, paths, uniqueInodes: inodes.size };
 }
 
-export async function catalog({ playlists, downloads, dbPath }) {
+export async function catalog({ playlists, downloads, dbPath, metadataPath, mediaCachePath }) {
   const songs = new Map();
   let playlistCount = 0,
     occurrences = 0,
@@ -125,20 +126,21 @@ export async function catalog({ playlists, downloads, dbPath }) {
     for (const t of p.tracks) {
       if (!t.artist || !t.name) continue;
       occurrences++;
-      const key = songKey(t.artist, t.name);
+      const key = sourceKey(t);
       const song = songs.get(key) || {
         key,
         artist: t.artist,
         name: t.name,
         spotifyIds: [],
         destinations: [],
+        occurrences: [],
+        legacyKey: songKey(t.artist, t.name),
         rowIds: [],
         url: null,
         missing: false,
         coverUrl: t.coverUrl || p.coverUrl || null,
       };
-      const spotifyId = /^[A-Za-z0-9]{22}$/.test(t.id || '') ? t.id :
-        String(t.href || '').match(/^https:\/\/open\.spotify\.com\/track\/([A-Za-z0-9]{22})(?:[?#]|$)/)?.[1];
+      const spotifyId = trackSourceId(t);
       if (spotifyId && !song.spotifyIds.includes(spotifyId)) song.spotifyIds.push(spotifyId);
       const durationMs = t.durationMs ?? t.duration_ms;
       if (positiveDurationMs(durationMs)) {
@@ -151,8 +153,10 @@ export async function catalog({ playlists, downloads, dbPath }) {
       }
       const path = join(
         folder(downloads, p.name),
-        fileBase(t.artist, t.name) + ".mp3",
+        sourceFileBase(t) + ".mp3",
       );
+      song.occurrences.push({ playlistId: p.id || p.uri, n: t.n, artist: t.artist, name: t.name,
+        durationMs: positiveDurationMs(durationMs) ? durationMs : undefined, folder: folder(downloads, p.name) });
       if (!song.destinations.includes(path)) song.destinations.push(path);
       songs.set(key, song);
     }
@@ -161,10 +165,11 @@ export async function catalog({ playlists, downloads, dbPath }) {
   // confirmed misses and the IDs whose durable outcomes should be reconciled.
   const db = database(dbPath, true);
   try {
+    const columns = new Set((await db.all('PRAGMA table_info(track_entity)')).map(row => row.name));
     for (const row of await db.all(
-      "SELECT id, artist, name, youtubeUrl, error FROM track_entity",
+      `SELECT id, artist, name, youtubeUrl, error, ${columns.has('spotifyUrl') ? 'spotifyUrl' : 'NULL AS spotifyUrl'} FROM track_entity`,
     )) {
-      const s = songs.get(songKey(row.artist, row.name));
+      const s = songs.get(sourceKey(row));
       if (!s) continue;
       s.rowIds.push(row.id);
       if (row.youtubeUrl) s.url ||= row.youtubeUrl;
@@ -174,11 +179,23 @@ export async function catalog({ playlists, downloads, dbPath }) {
     await db.close();
   }
   const disk = scanAudio(downloads);
-  for (const s of songs.values()) {
-    s.source = disk.byKey.get(s.key) || s.destinations.find(nonempty) || null;
+  const media = new LocalMediaIndex([downloads], metadataPath || process.env.SPOTIFY_TRACK_METADATA_PATH || join(dirname(dbPath), 'spotify-track-metadata'),
+    mediaDurationCache(mediaCachePath || join(dirname(dbPath), 'media-duration-cache')));
+  const refreshSong = async s => {
+    const places = [...new Map(s.occurrences.map(o => [`${o.folder}\0${o.artist}\0${o.name}`, o])).values()];
+    const resolutions = await Promise.all(places.map(o => media.resolve({ ...s, ...o, durationMs: o.durationMs || s.durationMs }, o.folder)));
+    s.destinations = [...new Set(resolutions.map(r => r.destination))];
+    s.localEvidence = Object.fromEntries(resolutions.filter(r => r.localFingerprint).map(r => [r.local, r.localFingerprint]));
+    s.source = resolutions.find(r => r.verification === 'duration-match')?.source || resolutions.find(r => r.local)?.local || null;
+    s.sourceVerified = resolutions.some(r => r.verification === 'duration-match');
+    s.sourceFingerprint = resolutions.find(r => r.source === s.source)?.sourceFingerprint;
+    s.mediaVerification = s.sourceVerified ? 'duration-match' : resolutions.some(r => r.verification === 'unverified') ? 'unverified' : resolutions.some(r => r.verification === 'mismatch') ? 'mismatch' : 'missing';
+    const expected = resolutions.find(r => r.expectedMs)?.expectedMs;
+    if (expected) s.durationMs = expected;
     if (s.url || s.source) s.missing = false;
-  }
-  return { songs, disk, playlistCount, occurrences, skipped };
+  };
+  await Promise.all([...songs.values()].map(refreshSong));
+  return { songs, disk, playlistCount, occurrences, skipped, refreshSong };
 }
 
 export function eta(remaining, rate, now = Date.now()) {
@@ -221,8 +238,11 @@ export function summary(c) {
     playlists: c.playlistCount,
     excludedPlaylists: c.skipped,
     occurrences: c.occurrences,
+    identityScheme: 'spotify-source-v1',
     uniqueSongs: all.length,
     saved: all.filter((s) => s.source).length,
+    savedDurationMatched: all.filter((s) => s.source && s.sourceVerified).length,
+    savedUnverified: all.filter((s) => s.source && !s.sourceVerified).length,
     confirmedMissing: all.filter((s) => s.missing).length,
     remaining: all.filter((s) => !s.source && !s.missing).length,
     readyUrls: all.filter((s) => !s.source && s.url).length,

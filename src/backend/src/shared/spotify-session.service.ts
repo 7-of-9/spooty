@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { completeSpotifyMembership, SpotifyMembership } from './spotify-membership';
 import { CdpProxyClient } from './cdp-proxy.client';
+import { collectSpotifyLibrary, SpotifyLibraryPlaylist } from './spotify-library-pages';
 import {
   collectPlaylistV2TrackIds,
   PlaylistV2Page,
@@ -120,14 +122,7 @@ export type KnownTrack = {
   durationMs?: number;
 };
 
-export type SessionPlaylist = {
-  id: string;
-  uri: string;
-  name: string;
-  snapshotId?: string;
-  trackCount: number;
-  coverUrl?: string | null;
-};
+export type SessionPlaylist = SpotifyLibraryPlaylist;
 
 @Injectable()
 export class SpotifySessionService {
@@ -295,50 +290,15 @@ export class SpotifySessionService {
 
   async getLibraryPlaylists(): Promise<SessionPlaylist[]> {
     const token = await this.getAccessToken();
-    const playlists: SessionPlaylist[] = [];
-    let next: string | null =
-      'https://api.spotify.com/v1/me/playlists?limit=50&offset=0';
-
-    for (let page = 0; next && page < 100; page++) {
-      const url = new URL(next);
-      if (url.origin !== 'https://api.spotify.com') {
-        throw new Error('Spotify returned an unexpected playlist page URL');
-      }
-      const res = await this.sessionFetch(url.toString(), {
+    return collectSpotifyLibrary(async url => {
+      const res = await this.sessionFetch(url, {
         headers: this.headers(token),
       });
       if (!res.ok) {
         throw new Error(`Spotify library request failed: ${res.status}`);
       }
-      const body = (await res.json()) as {
-        items?: Array<{
-          id?: string;
-          uri?: string;
-          name?: string;
-          snapshot_id?: string;
-          images?: Array<{ url?: string }>;
-          tracks?: { total?: number };
-          items?: { total?: number };
-        }>;
-        next?: string | null;
-      };
-      for (const item of body.items || []) {
-        if (!item.id || !item.name) continue;
-        playlists.push({
-          id: item.id,
-          uri: item.uri || `spotify:playlist:${item.id}`,
-          name: item.name,
-          snapshotId: item.snapshot_id,
-          trackCount: Number(item.items?.total ?? item.tracks?.total ?? 0),
-          coverUrl: item.images?.[0]?.url || null,
-        });
-      }
-      next = body.next || null;
-    }
-    if (next) {
-      throw new Error('Spotify library pagination exceeded 100 pages');
-    }
-    return playlists;
+      return res.json();
+    });
   }
 
   private async hydrateOne(
@@ -403,6 +363,7 @@ export class SpotifySessionService {
     length: number;
     truncated: boolean;
     tracks: SessionTrack[];
+    membership?: SpotifyMembership;
   }> {
     const token = await this.getAccessToken();
     const collected = await collectPlaylistV2TrackIds(async (from) => {
@@ -416,10 +377,7 @@ export class SpotifySessionService {
           : [
               `https://spclient.wg.spotify.com/playlist/v2/playlist/${playlistId}`,
             ];
-      let last: PlaylistV2Page = {
-        length: 0,
-        contents: { items: [], truncated: false },
-      };
+      let last: PlaylistV2Page | null = null;
       for (const url of urls) {
         const res = await this.sessionFetch(url, {
           headers: this.headers(token),
@@ -429,6 +387,7 @@ export class SpotifySessionService {
         const n = last.contents?.items?.length || 0;
         if (from === 0 || n > 0) return last;
       }
+      if (!last) throw new Error('Spotify did not return a successful playlist response');
       return last;
     });
     const trackIds = collected.trackIds;
@@ -474,6 +433,9 @@ export class SpotifySessionService {
       length: collected.length || trackIds.length,
       truncated: collected.truncated || tracks.length < trackIds.length,
       tracks,
+      ...(!collected.truncated && tracks.length === trackIds.length
+        ? { membership: completeSpotifyMembership(playlistId, collected.length, trackIds) }
+        : {}),
     };
   }
 }

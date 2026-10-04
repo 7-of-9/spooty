@@ -16,25 +16,31 @@ import {
   catalog,
   database,
   summary,
-  materialize,
   scanAudio,
   eta,
   nonempty,
   mergeAdmissions,
+  sourceJournal,
 } from "./acquire/catalog.mjs";
-import { publishMp3, bestEffortPaceMirror } from "./acquire/publication.mjs";
+import { publishMp3ForTrack, materializeForTrack, mediaFingerprint, bestEffortPaceMirror } from "./acquire/publication.mjs";
 import { assertClientCompatibility } from "./acquire/client-policy.mjs";
 import { pacedEta, acquisitionBenchmark, acquisitionMetrics } from "./acquire/report.mjs";
 import { createDurationResolver } from './acquire/spotify-duration.mjs';
 import { DurationCandidates, assertDuration, DURATION_REJECTED, DURATION_NO_CANDIDATE } from './acquire/duration-policy.mjs';
 import { candidateLimits, recordCandidateOutcome, isNetworkFailure, networkFailureState, preparedSearchBufferSize, readyDownloadCandidates } from './acquire/candidate-policy.mjs';
 import { recordDurationReplacement } from './acquire/duration-repair-ledger.mjs';
+import { SourceReviewIndex } from './acquire/review-identity.mjs';
 import { parseCommandLine, helpText } from './acquire/cli-options.mjs';
 import { resumedSong, resumePlan, readJournal } from './acquire/resume-state.mjs';
 import { verifyLiveOwner, controlForOwner, controlMatchesRun } from './acquire/live-control.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const { downloadSettingsPath, resolveDownloadLocation } = require('../src/backend/src/shared/acquisition/download-location.ts');
+const dbPath = resolve(process.env.DB_PATH || join(ROOT, 'data/spooty.sqlite'));
+const downloadLocation = () => resolveDownloadLocation(
+  process.env.DOWNLOADS_PATH || join(ROOT, 'downloads'), downloadSettingsPath(dbPath),
+).path;
 const stateDir = resolve(
   process.env.ACQUIRE_STATE_PATH || join(ROOT, "data/acquire"),
 );
@@ -45,8 +51,8 @@ const paths = {
     process.env.STATIC_PLAYLISTS_PATH ||
       join(ROOT, "PLAYLISTS_2026-09-08/playlists"),
   ),
-  downloads: resolve(process.env.DOWNLOADS_PATH || join(ROOT, "downloads")),
-  dbPath: resolve(process.env.DB_PATH || join(ROOT, "data/spooty.sqlite")),
+  downloads: downloadLocation(),
+  dbPath,
   cookies: resolve(process.env.COOKIES_PATH || join(ROOT, "cookies.txt")),
   pace: join(stateDir, "pace.json"),
   paceEvents: join(stateDir, "pace-events.jsonl"),
@@ -174,6 +180,7 @@ async function run() {
     lastReport = 0,
     lastControl = 0;
   let reviewPending = [], reviewReserved = 0, reviewCompleted = 0, reviewErrors = 0;
+  let reviewSelection = null;
   let reviewWork;
   const savedTimes = [],
     tasks = new Set();
@@ -228,7 +235,6 @@ async function run() {
     const remaining =
       songs?.filter(
         (s) =>
-          !disk.byKey.has(s.key) &&
           !(s.source && nonempty(s.source)) &&
           s.state !== "missing",
       ).length ?? null;
@@ -237,7 +243,7 @@ async function run() {
       Math.min(minutesBack, elapsed || minutesBack);
     const recoveryWait = transport?.recoveryWaitMs(now) || 0;
     const reportedPace = transport?.pace.snapshot();
-    const savedUnique = songs?.filter(song => disk.byKey.has(song.key) || (song.source && nonempty(song.source))).length || 0;
+    const savedUnique = songs?.filter(song => song.source && nonempty(song.source)).length || 0;
     const notSaved = (songs?.length || 0) - savedUnique;
     const actionable = songs?.filter(song => ['ready', 'pending', 'searching', 'downloading'].includes(song.state) &&
       (!options['search-only'] || !song.url)).length || 0;
@@ -295,7 +301,7 @@ async function run() {
       uniqueInodes: disk.uniqueInodes,
       activeBatches: { ...active },
       actualYtdlpProcesses: transport?.children.size || 0,
-      sourceReview: { pending: reviewPending.length, completed: reviewCompleted, errors: reviewErrors },
+      sourceReview: { pending: reviewPending.length, completed: reviewCompleted, errors: reviewErrors, selection: reviewSelection },
       reviewWork: reviewWork?.snapshot() || null,
       durationGuard: 'spotify-v1',
       searchBuffer,
@@ -321,6 +327,8 @@ async function run() {
     return result;
   }
   try {
+    // Re-read under the exclusive lease: the UI cannot switch folders mid-run.
+    paths.downloads = downloadLocation();
     if (
       previousHandoff &&
       previousHandoff.phase !== "returned" &&
@@ -478,11 +486,26 @@ async function run() {
       (await journal.all("SELECT * FROM work")).map((r) => [r.key, r]),
     );
     for (const song of songs) {
-      Object.assign(song, resumedSong(song, prior.get(song.key), { maxSearches, retryErrors: options['retry-errors'] }));
+      Object.assign(song, resumedSong(song, sourceJournal(song, prior), { maxSearches, retryErrors: options['retry-errors'] }));
       if (song.source) {
         const needed = song.destinations.some((p) => !nonempty(p));
-        materialize(song.source, song.destinations);
-        const old = prior.get(song.key);
+        if (needed && !song.sourceVerified) {
+          // Historical presence is not permission to copy unknown audio into
+          // new occurrences. Hydrate this exact source, then use shared evidence.
+          try { await resolveDuration(song); await c.refreshSong(song); }
+          catch { song.source = null; }
+          if (!song.source || !song.sourceVerified) {
+            song.source = null;
+            // Losing historical presence must not reopen a parked outcome.
+            Object.assign(song, resumedSong(song, sourceJournal(song, prior), { maxSearches, retryErrors: options['retry-errors'] }));
+            continue;
+          }
+        }
+        const copies = materializeForTrack(song.source, song.destinations, song, {
+          source: song.sourceFingerprint, local: song.localEvidence,
+        });
+        song.destinations = copies.destinations;
+        const old = sourceJournal(song, prior);
         if (old && !['saved', 'done'].includes(old.state)) {
           // A physically present file wins over a stale failure in BOTH stores.
           // If that file later disappears, a false exhausted-error marker must
@@ -517,12 +540,20 @@ async function run() {
     function queueSourceReview() {
       const review = readJson(join(stateDir, "quality-review.json"));
       if (!Array.isArray(review?.entries)) {
+        reviewSelection = { checkedAt: new Date().toISOString(), error: 'Missing or invalid quality-review ledger' };
         emit("source_review_error", { error: "Missing or invalid quality-review ledger" });
         return;
       }
-      const keys = new Set(review.entries.filter((e) => e.status !== "resolved").map((e) => e.key));
-      reviewPending = songs.filter((song) => keys.has(song.key) && song.url && song.source);
-      emit("source_review_queued", { songs: reviewPending.length });
+      try {
+        const index = new SourceReviewIndex(review.entries);
+        const { songs: pending, ...details } = index.inspectionPlan(songs);
+        reviewPending = pending;
+        reviewSelection = { ...details, checkedAt: new Date().toISOString(), error: null };
+        emit("source_review_queued", { songs: reviewPending.length, ...details });
+      } catch {
+        reviewSelection = { checkedAt: new Date().toISOString(), error: 'Invalid or conflicting source review identities; no additional inspections queued' };
+        emit("source_review_error", { error: "Invalid or conflicting source review identities; no additional inspections queued" });
+      }
     }
     if (options["inspect-review"]) queueSourceReview();
     function launchSourceReview(batch) {
@@ -672,16 +703,21 @@ async function run() {
             failures = ready.length ? await transport.download(
               ready,
               async (song, source, sourceEvidence) => {
+                const proof = mediaFingerprint(source);
                 const duration = await verifyMp3(source);
                 assertDuration(song.durationMs, duration);
-                const target = song.destinations[0];
-                const newlyPublished = publishMp3(
+                const publication = publishMp3ForTrack(
                   source,
-                  target,
-                  { title: song.name, artist: song.artist },
+                  song.destinations[0],
+                  song,
                   (tags, path) => require("node-id3").write(tags, path),
+                  proof,
                 );
-                materialize(target, song.destinations);
+                const target = publication.path;
+                const newlyPublished = publication.created;
+                song.destinations[0] = target;
+                const copies = materializeForTrack(target, song.destinations, song, { local: song.localEvidence });
+                song.destinations = copies.destinations;
                 song.source = target;
                 song.state = "saved";
                 song.error = null;

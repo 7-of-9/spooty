@@ -6,6 +6,7 @@ describe('web acquisition option contract', () => {
   const service = {
     download: jest.fn().mockResolvedValue({ queued: 0, skipped: 0 }),
     downloadRemaining: jest.fn().mockResolvedValue({ queued: 0, skipped: 0 }),
+    downloadRequestStatus: jest.fn(),
   };
   beforeEach(() => jest.clearAllMocks());
   it('forwards depth/retry controls to focused and remaining workflows', async () => {
@@ -60,5 +61,26 @@ describe('web acquisition option contract', () => {
       retryMissing: false,
       retryNoCandidate: false,
     });
+  });
+
+  it('forwards a valid HTTP request ID separately from acquisition policy', async () => {
+    const id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const controller = new LibraryController(service as any);
+    await controller.download({ uris: ['spotify:playlist:fixture'], maxSearches: 10 }, id);
+    expect(service.download).toHaveBeenCalledWith(['spotify:playlist:fixture'], expect.objectContaining({ maxSearches: 10 }), id);
+    await controller.downloadRemaining({ networkRetries: 5 }, id);
+    expect(service.downloadRemaining).toHaveBeenCalledWith({ networkRetries: 5 }, id);
+    controller.downloadRequestStatus(id);
+    expect(service.downloadRequestStatus).toHaveBeenCalledWith(id);
+  });
+
+  it.each(['', '../outside', 'not-a-uuid'])('rejects malformed request identity before service access: %j', id => {
+    const controller = new LibraryController(service as any);
+    expect(() => controller.download({ uris: [] }, id)).toThrow(BadRequestException);
+    expect(() => controller.downloadRemaining({}, id)).toThrow(BadRequestException);
+    expect(() => controller.downloadRequestStatus(id)).toThrow(BadRequestException);
+    expect(service.download).not.toHaveBeenCalled();
+    expect(service.downloadRemaining).not.toHaveBeenCalled();
+    expect(service.downloadRequestStatus).not.toHaveBeenCalled();
   });
 });

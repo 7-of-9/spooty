@@ -3,8 +3,10 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Headers,
   NotFoundException,
   Param,
+  Query,
   Post,
   Res,
 } from '@nestjs/common';
@@ -13,6 +15,7 @@ import type { Response } from 'express';
 import { LibraryListResponse, LibraryService } from './library.service';
 import { AcquisitionOptions } from '../track/track.service';
 import { candidateLimits } from '../shared/acquisition/candidate-policy';
+import { validateDownloadRequestId } from './download-request-store';
 
 @Controller('library')
 export class LibraryController {
@@ -23,18 +26,28 @@ export class LibraryController {
     return this.service.list();
   }
 
+  @Get('view')
+  view(@Query('scan') scan?: string, @Query('refresh') refresh?: string) {
+    return this.service.view(scan, refresh === '1');
+  }
+
+  @Get('view/detail/:id')
+  viewDetail(@Param('id') id: string, @Query('scan') scan: string) {
+    return this.service.viewDetail(id, scan);
+  }
+
   @Get('detail/:id')
   detail(@Param('id') id: string) {
     return this.service.detail(id);
   }
 
   @Get('audio/:playlistId/:n')
-  audio(
+  async audio(
     @Res() res: Response,
     @Param('playlistId') playlistId: string,
     @Param('n') n: string,
-  ): void {
-    const file = this.service.resolveAudioPath(playlistId, Number(n));
+  ): Promise<void> {
+    const file = await this.service.resolveAudioPath(playlistId, Number(n));
     if (!existsSync(file.path)) {
       throw new NotFoundException('Audio file missing');
     }
@@ -52,23 +65,38 @@ export class LibraryController {
   @Post('download')
   download(
     @Body() body: { uris?: string[] } & AcquisitionOptions,
+    @Headers('x-spooty-request-id') requestId?: string,
   ): Promise<{ queued: number; skipped: number }> {
     this.validateAcquisitionOptions(body, true);
-    return this.service.download(body?.uris || [], {
+    if (requestId !== undefined) validateDownloadRequestId(requestId);
+    const options = {
       maxSearches: body?.maxSearches,
       networkRetries: body?.networkRetries,
       retryMissing: body?.retryMissing === true,
       retryNoCandidate: body?.retryNoCandidate === true,
       retryErrors: body?.retryErrors === true,
-    });
+    };
+    return requestId === undefined
+      ? this.service.download(body?.uris || [], options)
+      : this.service.download(body?.uris || [], options, requestId);
   }
 
   @Post('download-remaining')
   downloadRemaining(
     @Body() body?: AcquisitionOptions,
+    @Headers('x-spooty-request-id') requestId?: string,
   ): Promise<{ queued: number; skipped: number }> {
     this.validateAcquisitionOptions(body);
-    return this.service.downloadRemaining(body || {});
+    if (requestId !== undefined) validateDownloadRequestId(requestId);
+    return requestId === undefined
+      ? this.service.downloadRemaining(body || {})
+      : this.service.downloadRemaining(body || {}, requestId);
+  }
+
+  @Get('download-requests/:requestId')
+  downloadRequestStatus(@Param('requestId') requestId: string) {
+    validateDownloadRequestId(requestId);
+    return this.service.downloadRequestStatus(requestId);
   }
 
   private validateAcquisitionOptions(body: unknown, urisAllowed = false): void {
@@ -108,6 +136,19 @@ export class LibraryController {
     return this.service.startLibrarySync();
   }
 
+  @Get('spotify-connection')
+  spotifyConnectionState() {
+    return this.service.spotifyConnectionState();
+  }
+
+  @Post('spotify-connection')
+  connectSpotifyChrome(@Body() body?: { confirm?: string }) {
+    if (body?.confirm !== 'allow-one-chrome-connection') {
+      throw new BadRequestException('Explicit confirmation for one Chrome connection is required');
+    }
+    return this.service.connectSpotifyChrome();
+  }
+
   @Get('sync')
   syncLibraryStatus() {
     return this.service.librarySyncStatus();
@@ -125,6 +166,11 @@ export class LibraryController {
 
   @Post('resync/:id')
   resync(@Param('id') id: string) {
-    return this.service.resync(id);
+    return this.service.resyncAndWait(id);
+  }
+
+  @Post('sync/playlist/:id')
+  startPlaylistSync(@Param('id') id: string) {
+    return this.service.startPlaylistSync(id);
   }
 }

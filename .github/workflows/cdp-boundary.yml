@@ -1,0 +1,22 @@
+name: Singleton Chrome boundary
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  no-direct-chrome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+      # This source/retired-command check needs no npm install, browser,
+      # private data, secrets, Chrome permissions, or network requests.
+      - run: node --test scripts/cdp-boundary.test.mjs

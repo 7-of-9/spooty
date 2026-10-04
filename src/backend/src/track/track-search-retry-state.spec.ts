@@ -7,6 +7,7 @@ import {
 } from '../shared/acquisition/duration-policy';
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
+import { MediaDurationCache } from '../shared/acquisition/local-media';
 
 describe('durable acquisition outcomes and independent retry budgets', () => {
   let f: ReturnType<typeof trackFixture>;
@@ -137,6 +138,22 @@ describe('durable acquisition outcomes and independent retry budgets', () => {
     await f.service.findOnYoutube(f.row);
     expect(f.transport.process).not.toHaveBeenCalled();
     expect(f.search.add).not.toHaveBeenCalled();
+  });
+
+  it('preserves parked legacy history while an explicit retry writes only the exact source key', async () => {
+    const legacy = 'a - b';
+    await f.journal.save({ key: legacy, state: 'no-candidate', searchLimit: 10, error: DURATION_NO_CANDIDATE, url: 'legacy-other-version' });
+    f.row.durationMs = 30000;
+    mkdirSync(dirname(f.destination), { recursive: true });
+    writeFileSync(f.destination, 'wrong version');
+    jest.spyOn(MediaDurationCache.prototype, 'duration').mockResolvedValue(60);
+    expect(await f.service.retry(f.row.id, {})).toBe(false);
+    expect(f.search.add).not.toHaveBeenCalled();
+    expect(await f.service.retry(f.row.id, { retryNoCandidate: true })).toBe(true);
+    expect(await f.journal.get(f.key)).toMatchObject({ state: 'pending', url: null });
+    expect(await f.journal.get(legacy)).toMatchObject({ state: 'no-candidate', url: 'legacy-other-version' });
+    expect(f.row.audioFilename).toContain(']-2.mp3');
+    expect(f.search.add).toHaveBeenCalledTimes(1);
   });
   it('read-only library projection shows CLI no-candidate depth without another attempt', async () => {
     await f.journal.save({

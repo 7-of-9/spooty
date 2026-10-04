@@ -19,6 +19,19 @@ function fixture() {
 }
 const fakeProbe = async () => ({ codec: 'mp3', durationSeconds: 200 });
 
+test('source-keyed audit preserves legacy review evidence only for its explicitly named Spotify version', () => {
+  const f = fixture();
+  try {
+    writeFileSync(f.song.destinations[0], 'audio');
+    const first = { ...f.song, key: `spotify:${ID}`, legacyKey: f.song.key };
+    const second = { ...first, key: `spotify:${ID2}`, spotifyIds: [ID2] };
+    f.plan.songs = new Map([[first.key, first], [second.key, second]]);
+    const snapshot = snapshotFiles(f.plan, f.downloads, [], [{ key: f.song.key, catalogTrackId: ID, status: 'needs-review' }]);
+    assert.equal(snapshot.songs.find(song => song.key === first.key).knownReviewStatus, 'needs-review');
+    assert.equal(snapshot.songs.find(song => song.key === second.key).knownReviewStatus, null);
+  } finally { f.clean(); }
+});
+
 test('audit pacing permits configured 250 ms spacing but cannot disable its minimum', () => {
   assert.equal(auditGapMs('250'), 250);
   assert.equal(auditGapMs(1000), 1000);
@@ -151,7 +164,7 @@ test('full cached pass is resumable, caps local probes at two, and never fetches
   try {
     const playlists = join(f.root, 'playlists'), statePath = join(f.root, 'state'), cachePath = join(f.root, 'cache'), output = join(f.root, 'audit');
     for (const path of [playlists, statePath, cachePath]) mkdirSync(path);
-    const tracks = Array.from({ length: 5 }, (_, index) => ({ id: ID, name: `Track ${index}`, artist: 'Artist', durationMs: 200000 }));
+    const tracks = Array.from({ length: 5 }, (_, index) => ({ id: String(index + 1).padStart(22, '0'), name: `Track ${index}`, artist: 'Artist', durationMs: 200000 }));
     writeFileSync(join(playlists, 'p.json'), JSON.stringify({ name: 'List', tracks })); mkdirSync(join(f.downloads, 'List'));
     for (const track of tracks) writeFileSync(join(f.downloads, 'List', `Artist - ${track.name}.mp3`), 'audio');
     const dbPath = join(f.root, 'db.sqlite'), db = database(dbPath);

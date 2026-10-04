@@ -1,8 +1,11 @@
+import { sourceKey } from '../shared/acquisition/identity';
+
 export type UrlReuseTrack = {
   id?: number;
   artist: string;
   name: string;
   youtubeUrl?: string | null;
+  spotifyUrl?: string | null;
 };
 
 export function pickReusedYoutubeUrl(
@@ -14,6 +17,7 @@ export function pickReusedYoutubeUrl(
   if (!artist || !name) return null;
   for (const row of rows) {
     if (track.id != null && row.id === track.id) continue;
+    if (sourceKey(track) !== sourceKey(row)) continue;
     if ((row.artist || '').trim() !== artist) continue;
     if ((row.name || '').trim() !== name) continue;
     const url = (row.youtubeUrl || '').trim();

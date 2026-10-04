@@ -371,11 +371,11 @@ test("atomic publication supports long valid filenames and preserves existing fi
     );
     assert.equal(readFileSync(target, "utf8"), "mp3-fixture");
     writeFileSync(source, "replacement");
-    assert.equal(
-      publishMp3(source, target, {}, () => {
+    assert.throws(
+      () => publishMp3(source, target, {}, () => {
         throw new Error("must not retag existing");
       }),
-      false,
+      /occupied/,
     );
     assert.equal(readFileSync(target, "utf8"), "mp3-fixture");
     assert.throws(
@@ -499,7 +499,7 @@ test("catalog excludes dynamic mixes, keeps radio, deduplicates across playlists
       dbPath = join(root, "test.sqlite");
     mkdirSync(playlists);
     mkdirSync(downloads);
-    const track = { artist: "Artist", name: "Song", id: "spotify-id" };
+    const track = { artist: "Artist", name: "Song", id: "spotify-id", durationMs: 1000 };
     for (const [i, name] of [
       "Daily Mix 4",
       "Daily Mixes",
@@ -537,7 +537,7 @@ test("catalog excludes dynamic mixes, keeps radio, deduplicates across playlists
     ]);
     await db.close();
     const source = join(downloads, "Artist - Song.mp3");
-    writeFileSync(source, "existing-mp3-fixture");
+    execFileSync('/opt/homebrew/bin/ffmpeg', ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', '-t', '1', source]);
     const c = await catalog({ playlists, downloads, dbPath });
     assert.equal(c.playlistCount, 2);
     assert.equal(c.occurrences, 2);
@@ -546,13 +546,13 @@ test("catalog excludes dynamic mixes, keeps radio, deduplicates across playlists
     assert.equal(song.missing, false);
     assert.equal(song.source, source);
     assert.equal(song.destinations.length, 2);
-    materialize(source, song.destinations);
+    assert.equal(materialize(source, song.destinations), 2);
     assert.equal(statSync(source).ino, statSync(song.destinations[0]).ino);
     const disk = scanAudio(downloads);
     assert.equal(disk.paths, 3);
     assert.equal(disk.uniqueInodes, 1);
     assert.equal(disk.bytes, statSync(source).size);
-    materialize(source, song.destinations); // Idempotent resume.
+    assert.equal(materialize(source, song.destinations), 0); // Idempotent resume.
     const hidden = join(downloads, ".spooty-download-batch-fixture");
     mkdirSync(hidden);
     writeFileSync(join(hidden, "Other - Song.mp3"), "partial");
@@ -1023,5 +1023,7 @@ test("successful 429-second metadata and quoted bot-check text cannot trip the s
   assert.equal(lines.length, 2);
   assert.ok(!calls.includes("trip") && !calls.includes("kill"));
   child.emit("close", 0);
-  assert.equal((await pending).code, 0);
+  const result = await pending;
+  assert.equal(result.code, 0);
+  assert.equal(result.error, null, "successful structured output must not carry a generic operational error");
 });

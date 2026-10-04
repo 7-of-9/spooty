@@ -2,4 +2,5 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 require('ts-node').register({ transpileOnly: true, skipProject: true, compilerOptions: { module: 'commonjs', target: 'es2022', experimentalDecorators: true } });
 const core = require('../../src/backend/src/shared/acquisition/publication.ts');
-export const { publishMp3, bestEffortPaceMirror, materialize } = core;
+export const { publishMp3, publishMp3ForTrack, materializeForTrack, unpublishPlaylistCopies, bestEffortPaceMirror, materialize } = core;
+export const { mediaFingerprint } = require('../../src/backend/src/shared/acquisition/media-file.ts');

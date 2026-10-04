@@ -79,9 +79,9 @@ test('normal guarded search examines five candidates and skips obviously wrong f
     const transport = fakeTransport(root);
     const policy = new DurationCandidates(join(root, 'rejections.json'));
     transport.process = async (args, _kind, _timeout, onLine) => {
-      assert.ok(args.includes('ytsearch5:A Song'));
-      onLine(JSON.stringify({ original_url: 'ytsearch5:A Song', entries: [
-        { id: one, title: 'full album', duration: 3600 }, { id: two, title: 'Song', duration: 184 }] }));
+      assert.ok(args.at(-1).startsWith('ytsearch5:A Song'));
+      onLine(JSON.stringify({ original_url: args.at(-1), entries: [
+        { id: one, title: 'full album', duration: 3600 }, { id: two, title: 'A Song', duration: 184 }] }));
       return { code: 0 };
     };
     const song = { key: 'a - song', artist: 'A', name: 'Song', durationMs: 180000 };
@@ -106,15 +106,15 @@ test('unknown or malformed candidates produce no acceptable candidate; only a ge
     const policy = new DurationCandidates(join(root, 'rejections.json'));
     const song = { key: 'a', artist: 'A', name: 'Song', durationMs: 180000 };
     for (const entries of [[{ id: one }], [{ id: 'invalid', duration: 180 }], [{ id: one, duration: 3600 }]]) {
-      transport.process = async (_args, _kind, _timeout, onLine) => {
-        onLine(JSON.stringify({ original_url: 'ytsearch5:A Song', entries }));
+      transport.process = async (args, _kind, _timeout, onLine) => {
+        onLine(JSON.stringify({ original_url: args.at(-1), entries }));
         return { code: 0 };
       };
       const failures = await transport.search([song], () => { assert.fail('not a Missing or ready result'); }, policy);
       assert.equal(failures[0].error, DURATION_NO_CANDIDATE);
     }
-    transport.process = async (_args, _kind, _timeout, onLine) => {
-      onLine(JSON.stringify({ original_url: 'ytsearch5:A Song', entries: [] })); return { code: 0 };
+    transport.process = async (args, _kind, _timeout, onLine) => {
+      onLine(JSON.stringify({ original_url: args.at(-1), entries: [] })); return { code: 0 };
     };
     let result = 'not called';
     assert.deepEqual(await transport.search([song], (_song, found) => { result = found; }, policy), []);
@@ -133,7 +133,7 @@ test('default ten-result search reaches the tenth candidate without five-result 
       calls++;
       assert.ok(args.includes('ytsearch10:A Song'));
       onLine(JSON.stringify({ original_url: 'ytsearch10:A Song', entries: Array.from({ length: 10 }, (_, i) => ({
-        id: `candidate${String(i).padStart(2, '0')}`, title: `Result ${i + 1}`, duration: i === 9 ? 184 : 3600,
+        id: `candidate${String(i).padStart(2, '0')}`, title: `A Song ${i + 1}`, duration: i === 9 ? 184 : 3600,
       })) }));
       return { code: 0 };
     };

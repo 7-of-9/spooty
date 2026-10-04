@@ -25,12 +25,12 @@ describe('completed track file reuse', () => {
     expect(statSync(destination).ino).toBe(statSync(source).ino);
   });
 
-  it('accepts an existing non-empty destination', () => {
+  it('does not let an unverified occupied destination replace a missing source', () => {
     const destination = join(root, 'track.mp3');
     writeFileSync(destination, 'already here');
     expect(
       reuseCompletedTrackFile(join(root, 'missing.mp3'), destination, root),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('falls through when the source is missing or empty', () => {

@@ -1,0 +1,141 @@
+{
+ "id": "j02",
+ "a": "spotify:15vNoLXoliW2XdTUDlNlWk",
+ "b": "spotify:7e8WWf2iBY4sPJDYAeGgW0",
+ "form": "roll_slam",
+ "variant": "roll",
+ "tier": "noticeable",
+ "loud": true,
+ "b_in": "slam",
+ "rel": {
+  "kind": "free",
+  "ratio": 1.38108,
+  "a_ratio": 1,
+  "stretch_pct": 0.0,
+  "camelot": 2,
+  "chroma": null,
+  "a_class": "verify",
+  "b_class": "locked"
+ },
+ "bpb": 4,
+ "a_ref": {
+  "exit_bar": 96,
+  "exit_t": 183.146,
+  "period_s": 0.4762299
+ },
+ "b_ref": {
+  "land_bar": 48,
+  "land_t": 66.624,
+  "period_s": 0.3448242
+ },
+ "clock": [
+  {
+   "m0": -12,
+   "m1": 0,
+   "kind": "a_fit",
+   "bpm0": 125.98956932355571,
+   "bpm1": 125.98956932355571
+  },
+  {
+   "m0": 0,
+   "m1": 4,
+   "kind": "b_fit",
+   "bpm0": 174.0017086967794,
+   "bpm1": 174.0017086967794
+  }
+ ],
+ "span": {
+  "from": -12,
+  "to": 4
+ },
+ "clips": [
+  {
+   "id": "A",
+   "src": "a",
+   "stem": "mix",
+   "at": -12,
+   "len": 12,
+   "u0": -12,
+   "ratio": 1,
+   "warp": "native",
+   "gain_db": 0
+  },
+  {
+   "id": "B",
+   "src": "b",
+   "stem": "mix",
+   "at": 0,
+   "len": 4,
+   "u0": 0,
+   "ratio": 1,
+   "warp": "native",
+   "gain_db": 0
+  }
+ ],
+ "moves": [
+  {
+   "type": "filter",
+   "clip": "A",
+   "kind": "hp",
+   "at": -8,
+   "len": 7.5,
+   "hz": [
+    40,
+    1000
+   ],
+   "curve": "exp"
+  },
+  {
+   "type": "roll",
+   "clip": "A",
+   "at": -8,
+   "sizes": [
+    [
+     2,
+     4
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     0.5,
+     1
+    ],
+    [
+     0.25,
+     0.5
+    ]
+   ],
+   "slip": false,
+   "taper_db": -3
+  },
+  {
+   "type": "vacuum",
+   "at": -0.5,
+   "len": 0.5
+  }
+ ],
+ "events": [
+  [
+   -8,
+   -0.5,
+   "roll 2 / 1 / 1/2 / 1/4 with the HP rising"
+  ],
+  [
+   -0.5,
+   0,
+   "vacuum"
+  ],
+  [
+   0,
+   0,
+   "land: Bluebird inst drop 1:06.62"
+  ]
+ ],
+ "fallback": [
+  "echo_slam",
+  "cut_on_one"
+ ],
+ "hash": "30d721c17d8f727d"
+}

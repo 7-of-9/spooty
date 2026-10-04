@@ -4,8 +4,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { Server } from 'socket.io';
 import {
   copyFileSync,
   constants,
@@ -18,7 +22,8 @@ import {
   statSync,
   writeFileSync,
 } from 'fs';
-import { basename, extname, join, resolve } from 'path';
+import { basename, dirname, extname, join, resolve } from 'path';
+import { emptyLibrarySync, LibrarySyncState, PlaylistSyncResult, SpotifyLibraryObservation, SpotifySyncScope, readLibrarySync, spotifySyncFailure, validLibraryObservation, writeLibrarySync } from './library-sync-state';
 import { EnvironmentEnum } from '../environmentEnum';
 import { PlaylistService } from '../playlist/playlist.service';
 import { AcquisitionOptions, TrackService } from '../track/track.service';
@@ -31,7 +36,18 @@ import {
 } from '../shared/spotify-api.service';
 import { CdpProxyClient } from '../shared/cdp-proxy.client';
 import { isCandidateOutcome } from '../shared/acquisition/candidate-policy';
-import { materialize } from '../shared/acquisition/publication';
+import { hasCompleteSpotifyMembership, SpotifyMembership } from '../shared/spotify-membership';
+import { materializeForTrack, unpublishPlaylistCopies } from '../shared/acquisition/publication';
+import { webAdmission } from '../shared/web-admission-state';
+import { DownloadRequestStore } from './download-request-store';
+import { songKey, sourceKey, sourceJournal, trackSourceId } from '../shared/acquisition/identity';
+import { LocalMediaIndex, MediaResolution, mediaDurationCache } from '../shared/acquisition/local-media';
+import { CoveragePlaylist, CoverageProgress, LibraryCoverageScan, LibraryViewTrack } from './library-coverage-scan';
+import { LibraryChangeWatch, LibraryChanges, LibraryWatchPaths } from './library-change-watch';
+import {
+  playlistAttribution,
+  PlaylistOwner,
+} from '../shared/spotify-playlist-owner';
 
 export interface StaticTrack {
   n?: number;
@@ -61,6 +77,9 @@ export interface StaticPlaylistFile {
   lastPlayedAt?: string | null;
   syncedAt?: string | null;
   snapshotId?: string | null;
+  membership?: SpotifyMembership;
+  subtitle?: string;
+  owner?: PlaylistOwner | null;
 }
 
 export interface LibraryPlaylist {
@@ -81,9 +100,16 @@ export interface LibraryPlaylist {
   done: boolean;
   lastPlayedAt?: string | null;
   syncedAt?: string | null;
+  owner?: PlaylistOwner | null;
+  personalizedFor?: string | null;
+  membershipVerified?: boolean;
+  excludedItems?: number;
+  coveragePending?: number;
+  libraryPresence?: { state: 'present' | 'not-returned'; checkedAt: string };
 }
 
 export interface LibraryListResponse {
+  coverage?: CoverageProgress;
   playlists: LibraryPlaylist[];
   totals: {
     playlists: number;
@@ -104,7 +130,9 @@ const AUDIO_EXT = new Set([
 ]);
 
 @Injectable()
+@WebSocketGateway()
 export class LibraryService {
+  @WebSocketServer() io?: Server;
   private readonly logger = new Logger(LibraryService.name);
 
   constructor(
@@ -114,7 +142,18 @@ export class LibraryService {
     private readonly utilsService: UtilsService,
     private readonly spotifyApiService: SpotifyApiService,
     private readonly cdpProxy: CdpProxyClient,
-  ) {}
+  ) {
+    const dbPath = this.configService.get<string>(EnvironmentEnum.DB_PATH);
+    this.syncStatusFile = dbPath ? join(dirname(resolve(dbPath)), 'spotify-library-sync.json') : null;
+    try {
+      this.librarySync = readLibrarySync(this.syncStatusFile);
+      // Persist the interrupted result once; future page/server reloads must
+      // not resurrect the pre-restart running flag.
+      if (this.librarySync.finishedAt) this.persistLibrarySync();
+    } catch (error) {
+      this.logger.warn(`Could not restore Spotify sync status: ${error}`);
+    }
+  }
 
   private staticPlaylistsDir(): string {
     const configured = this.configService.get<string>(
@@ -130,33 +169,12 @@ export class LibraryService {
     return extras.filter((d, i, arr) => existsSync(d) && arr.indexOf(d) === i);
   }
 
-  private indexAudioFiles(): Map<string, string> {
-    const index = new Map<string, string>();
-    const format =
-      this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3';
-    const reusableExtension = `.${format.toLowerCase()}`;
-    const walk = (dir: string) => {
-      let entries;
-      try {
-        entries = readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const ent of entries) {
-        const full = join(dir, ent.name);
-        if (ent.isDirectory()) {
-          walk(full);
-        } else if (
-          extname(ent.name).toLowerCase() === reusableExtension &&
-          this.isNonEmptyFile(full)
-        ) {
-          const key = basename(ent.name, extname(ent.name)).toLowerCase();
-          if (key && !index.has(key)) index.set(key, full);
-        }
-      }
-    };
-    for (const dir of this.extraScanDirs()) walk(dir);
-    return index;
+  private indexAudioFiles(): LocalMediaIndex {
+    const data = dirname(this.configService.get<string>(EnvironmentEnum.DB_PATH) || resolve(process.cwd(), 'data/spooty.sqlite'));
+    return new LocalMediaIndex(this.extraScanDirs(),
+      this.configService.get<string>('SPOTIFY_TRACK_METADATA_PATH') || process.env.SPOTIFY_TRACK_METADATA_PATH || join(data, 'spotify-track-metadata'),
+      mediaDurationCache(join(data, 'media-duration-cache')),
+      this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3');
   }
 
   private readPlaylistFile(filePath: string): StaticPlaylistFile | null {
@@ -175,6 +193,8 @@ export class LibraryService {
     const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
     writeFileSync(temp, JSON.stringify(playlist, null, 2));
     renameSync(temp, filePath);
+    this.libraryRevision++;
+    this.coverageScan?.cancel();
   }
 
   private isExcludedName(name: string): boolean {
@@ -208,8 +228,9 @@ export class LibraryService {
     }
   }
 
-  private async jobByKey(): Promise<Map<string, TrackEntity>> {
+  private async jobByKey(): Promise<(track: any) => TrackEntity | undefined> {
     const jobs = await this.trackService.getAll();
+    const journal = await this.trackService.journalSnapshot?.() || new Map();
     const map = new Map<string, TrackEntity>();
     const rank = (status?: TrackStatusEnum): number => {
       switch (status) {
@@ -232,13 +253,21 @@ export class LibraryService {
       }
     };
     for (const job of jobs) {
-      const key = this.utilsService.trackFileKey(job.artist, job.name);
+      const key = sourceKey(job);
       const current = map.get(key);
       if (key && (!current || rank(job.status) > rank(current.status))) {
         map.set(key, job);
       }
     }
-    return map;
+    return track => {
+      const key = sourceKey(track);
+      const current = map.get(key);
+      const old = sourceJournal(track, journal);
+      return old ? this.trackService.projectStoredOutcome(current || {
+        artist: track.artist, name: track.name, status: TrackStatusEnum.New,
+        spotifyUrl: trackSourceId(track) ? `https://open.spotify.com/track/${trackSourceId(track)}` : null,
+      }, old) : current;
+    };
   }
 
   private playlistId(raw: StaticPlaylistFile, file: string): string | null {
@@ -250,95 +279,188 @@ export class LibraryService {
     return m ? m[1] : null;
   }
 
-  async list(): Promise<LibraryListResponse> {
-    const dir = this.staticPlaylistsDir();
-    const audio = this.indexAudioFiles();
-    const jobs = await this.jobByKey();
-    const playlists: LibraryPlaylist[] = [];
-    if (!existsSync(dir)) {
-      this.logger.warn(`STATIC_PLAYLISTS_PATH does not exist: ${dir}`);
-      return {
-        playlists: [],
-        totals: { playlists: 0, tracks: 0, onDisk: 0, available: 0 },
-      };
-    }
+  private coverageScan: LibraryCoverageScan | null = null;
+  private libraryRevision = 0;
+  private coverageStarting: Promise<LibraryCoverageScan> | null = null;
+  private coverageWatch: LibraryChangeWatch | null = null;
+  private coverageToken: object | null = null;
+  private coverageDisposed = false;
+  private coverageChanges: Promise<void> = Promise.resolve();
+  private coverageContext: { token: object; audio: LocalMediaIndex; refreshJobs: () => Promise<void>; project: (row: LibraryViewTrack) => LibraryViewTrack } | null = null;
 
-    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  onModuleDestroy(): void {
+    this.coverageDisposed = true;
+    this.coverageToken = null;
+    this.coverageWatch?.close();
+    this.coverageScan?.cancel();
+  }
+
+  private createCoverageWatch(paths: LibraryWatchPaths, notify: (changes: LibraryChanges) => void): LibraryChangeWatch {
+    return new LibraryChangeWatch(paths, notify);
+  }
+
+  private emitCoverage(): void {
+    this.io?.emit('libraryCoverageChanged', { id: this.coverageScan?.id || null, invalidated: this.coverageScan?.invalidated || false });
+  }
+
+  private async applyCoverageChanges(changes: LibraryChanges, token: object): Promise<void> {
+    if (this.coverageStarting) await this.coverageStarting;
+    if (token !== this.coverageToken || !this.coverageScan || this.coverageScan.invalidated) return;
+    if (changes.failed) this.coverageScan.updates = 'manual';
+    if (changes.membership) {
+      this.libraryRevision++;
+      this.coverageScan.cancel();
+      this.emitCoverage();
+      return;
+    }
+    const context = this.coverageContext;
+    if (!context || context.token !== token) return;
+    const keys = new Set(changes.sources);
+    for (const path of changes.media) context.audio.refreshPath(path).forEach(key => keys.add(key));
+    const next = this.coverageScan.changes(keys);
+    if (next) {
+      this.coverageScan = next;
+      next.finished.then(() => { if (this.coverageScan === next && token === this.coverageToken) this.emitCoverage(); });
+      this.emitCoverage();
+    }
+    if (changes.workflow) {
+      await context.refreshJobs();
+      if (context !== this.coverageContext || token !== this.coverageToken || this.coverageScan.invalidated) return;
+      this.coverageScan.updateWorkflow(context.project);
+      this.emitCoverage();
+    }
+    if (changes.failed) this.emitCoverage();
+  }
+
+  private workflowFields(job: any, onDisk: boolean) {
+    return {
+      acquisitionState: !onDisk ? job?.acquisitionState : null, retryAt: !onDisk ? job?.retryAt : null,
+      searchLimit: job?.searchLimit, networkAttempts: job?.networkAttempts, operationAttempts: job?.operationAttempts,
+      error: !onDisk && (job?.status === TrackStatusEnum.Error || job?.status === TrackStatusEnum.RetryWaiting) ? job.error : undefined,
+      missing: !onDisk && job?.status === TrackStatusEnum.Error ? isPermanentYoutubeMissing(job.error) : undefined,
+    };
+  }
+
+  private viewTrack(t: StaticTrack, media: MediaResolution | null, job: any): LibraryViewTrack {
+    const disk = media?.local;
+    const format = this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3';
+    const id = trackSourceId(t);
+    return {
+      n: t.n, name: t.name!, artist: t.artist!, sourceKey: sourceKey(t),
+      spotifyUrl: id ? `https://open.spotify.com/track/${id}` : null,
+      durationMs: media?.expectedMs || null, mediaVerification: media?.verification || 'checking',
+      onDisk: !!disk, available: !!disk || !!media?.source,
+      filename: disk ? basename(disk) : `${this.utilsService.trackFileBase(t.artist!, t.name!)}.${format}`,
+      ...this.workflowFields(job, !!disk),
+    };
+  }
+
+  private async buildCoverageScan(destination: string): Promise<LibraryCoverageScan> {
+    const dir = this.staticPlaylistsDir();
+    const db = resolve(this.configService.get<string>(EnvironmentEnum.DB_PATH) || process.env.DB_PATH || 'data/spooty.sqlite');
+    const data = dirname(db);
+    const token = this.coverageToken = {};
+    this.coverageWatch?.close();
+    const paths = {
+      media: this.extraScanDirs(), playlists: dir, settings: join(data, 'settings.json'),
+      metadata: this.configService.get<string>('SPOTIFY_TRACK_METADATA_PATH') || process.env.SPOTIFY_TRACK_METADATA_PATH || join(data, 'spotify-track-metadata'),
+      databases: [db, join(this.configService.get<string>('ACQUIRE_STATE_PATH') || process.env.ACQUIRE_STATE_PATH ||
+        this.configService.get<string>('ACQUIRE_STATE_DIR') || process.env.ACQUIRE_STATE_DIR || join(data, 'acquire'), 'work.sqlite')],
+    };
+    this.coverageWatch = this.createCoverageWatch(paths, changes => {
+      this.coverageChanges = this.coverageChanges.then(() => this.applyCoverageChanges(changes, token)).catch(() => {
+        if (token === this.coverageToken && this.coverageScan) { this.coverageScan.updates = 'manual'; this.emitCoverage(); }
+      });
+    });
+    const audio = this.indexAudioFiles();
+    let jobs = await this.jobByKey();
+    if (this.coverageDisposed || token !== this.coverageToken) throw new HttpException('Saved-file checking stopped with the server', HttpStatus.SERVICE_UNAVAILABLE);
+    this.coverageContext = { token, audio, refreshJobs: async () => { jobs = await this.jobByKey(); },
+      project: row => ({ ...row, ...this.workflowFields(jobs(row), row.onDisk) }) };
+    const records: CoveragePlaylist[] = [];
+    const files = existsSync(dir) ? readdirSync(dir).filter(file => file.endsWith('.json')) : [];
     for (const file of files) {
       const raw = this.readPlaylistFile(join(dir, file));
       if (!raw) continue;
       const id = this.playlistId(raw, file);
       if (!id) continue;
-      const uri = raw.uri || `spotify:playlist:${id}`;
       const name = raw.name || id;
       if (this.isExcludedName(name) || raw.skipped) continue;
-      const tracks = (raw.tracks || []).filter((t) => t.artist && t.name);
-      const skipped = false;
-      let onDisk = 0;
-      let available = 0;
-      let failed = 0;
+      const tracks = (raw.tracks || []).filter(track => track.artist && track.name);
       const folder = this.utilsService.getPlaylistFolderPath(name);
-      for (const track of tracks) {
-        const key = this.utilsService.trackFileKey(track.artist, track.name);
-        const base = this.utilsService.trackFileBase(track.artist, track.name);
-        const inFolder = !!this.onDiskFile(folder, base);
-        if (inFolder) {
-          onDisk++;
-          available++;
-        } else if (audio.has(key)) {
-          available++;
-          if (
-            jobs.get(key)?.status === TrackStatusEnum.Error &&
-            isPermanentYoutubeMissing(jobs.get(key)?.error)
-          ) {
-            failed++;
-          }
-        } else if (
-          jobs.get(key)?.status === TrackStatusEnum.Error &&
-          isPermanentYoutubeMissing(jobs.get(key)?.error)
-        ) {
-          failed++;
-        }
-      }
-      const trackCount = skipped && tracks.length === 0 ? 0 : tracks.length;
-      playlists.push({
-        uri,
-        id,
-        name,
-        rank: raw.rank || 0,
-        skipped,
-        skipReason: raw.skipReason,
-        trackCount,
-        onDisk,
-        available,
-        failed,
-        done: trackCount > 0 && onDisk + failed >= trackCount,
-        percentOnDisk: trackCount ? Math.round((onDisk / trackCount) * 100) : 0,
-        percentAvailable: trackCount
-          ? Math.round((available / trackCount) * 100)
-          : 0,
-        lastPlayedAt: raw.lastPlayedAt || null,
-        syncedAt: raw.syncedAt || null,
-        file,
-        spotifyUrl: `https://open.spotify.com/playlist/${id}`,
+      const membershipVerified = hasCompleteSpotifyMembership(raw.membership, id, tracks);
+      records.push({
+        playlist: { ...playlistAttribution(raw), id, uri: raw.uri || `spotify:playlist:${id}`, name,
+          rank: raw.rank || 0, skipped: false, trackCount: tracks.length,
+          onDisk: 0, available: 0, failed: 0, done: false, percentOnDisk: 0, percentAvailable: 0,
+          lastPlayedAt: raw.lastPlayedAt || null, syncedAt: raw.syncedAt || null, membershipVerified,
+          excludedItems: membershipVerified ? raw.membership!.excludedItemCount : undefined,
+          file, spotifyUrl: `https://open.spotify.com/playlist/${id}` },
+        tracks: tracks.map(track => this.viewTrack(track, null, jobs(track))),
+        resolve: tracks.map(track => async () => this.viewTrack(track, await audio.resolve(track, folder), jobs(track))),
       });
     }
+    records.sort((a, b) => a.playlist.rank - b.playlist.rank || a.playlist.name.localeCompare(b.playlist.name));
+    const scan = new LibraryCoverageScan(records, destination);
+    scan.updates = this.coverageWatch.live ? 'live' : 'manual';
+    return scan;
+  }
 
-    playlists.sort(
-      (a, b) => (a.rank || 0) - (b.rank || 0) || a.name.localeCompare(b.name),
-    );
-    const totals = playlists.reduce(
-      (acc, p) => {
-        if (p.skipped) return acc;
-        acc.playlists += 1;
-        acc.tracks += p.trackCount;
-        acc.onDisk += p.onDisk;
-        acc.available += p.available;
-        return acc;
-      },
-      { playlists: 0, tracks: 0, onDisk: 0, available: 0 },
-    );
-    return { playlists, totals };
+  private async ensureCoverageScan(refresh: boolean): Promise<LibraryCoverageScan> {
+    if (this.coverageDisposed) throw new HttpException('Saved-file checking stopped with the server', HttpStatus.SERVICE_UNAVAILABLE);
+    const destination = resolve(this.utilsService.getRootDownloadsPath());
+    if (this.coverageStarting) {
+      const scan = await this.coverageStarting;
+      if (!scan.invalidated && scan.destination === destination && destination === resolve(this.utilsService.getRootDownloadsPath())) return scan;
+      // Another caller may already be creating the replacement generation.
+      // Re-enter the single-flight gate instead of overwriting its promise.
+      return this.ensureCoverageScan(refresh);
+    }
+    if (this.coverageScan?.destination === destination && !this.coverageScan.invalidated && (this.coverageScan.running || !refresh)) return this.coverageScan;
+    this.coverageScan?.cancel();
+    const revision = this.libraryRevision;
+    this.coverageStarting = this.buildCoverageScan(destination);
+    try {
+      const scan = await this.coverageStarting;
+      if (revision === this.libraryRevision && destination === resolve(this.utilsService.getRootDownloadsPath())) return this.coverageScan = scan;
+      scan.cancel();
+    }
+    finally { this.coverageStarting = null; }
+    return this.ensureCoverageScan(true);
+  }
+
+  private observedScan(id: string): LibraryCoverageScan {
+    if (!this.coverageScan || this.coverageScan.invalidated || this.coverageScan.id !== id || this.coverageScan.destination !== resolve(this.utilsService.getRootDownloadsPath())) {
+      throw new ConflictException('Saved-file check changed; reload the saved library. No download has started.');
+    }
+    return this.coverageScan;
+  }
+
+  async view(scanId?: string, refresh = false): Promise<LibraryListResponse> {
+    if (scanId !== undefined) return this.withLibraryObservation(this.observedScan(scanId).snapshot());
+    const scan = await this.ensureCoverageScan(refresh);
+    // Warm reads usually finish within this short grace period. Cold reads
+    // return metadata/progress instead of holding HTTP open through ffprobe.
+    await new Promise<void>(yes => {
+      const timer = setTimeout(yes, 75);
+      scan.finished.then(() => { clearTimeout(timer); yes(); });
+    });
+    if (scan.invalidated) return this.view();
+    return this.withLibraryObservation(scan.snapshot());
+  }
+
+  async viewDetail(id: string, scanId: string) {
+    const result = this.observedScan(scanId).detail(id);
+    if (!result) throw new NotFoundException(`Playlist ${id} not found in saved library`);
+    return { ...result, playlist: this.withLibraryPresence(result.playlist) };
+  }
+
+  async list(): Promise<LibraryListResponse> {
+    const scan = await this.ensureCoverageScan(true);
+    await scan.finished;
+    const result = scan.snapshot();
+    if (result.coverage?.state === 'failed') throw new Error('Saved-file check failed; no missing-file conclusion is valid');
+    return this.withLibraryObservation(result);
   }
 
   async detail(id: string): Promise<{
@@ -347,6 +469,10 @@ export class LibraryService {
       n?: number;
       name: string;
       artist: string;
+      sourceKey: string;
+      spotifyUrl: string | null;
+      durationMs: number | null;
+      mediaVerification: string;
       onDisk: boolean;
       available: boolean;
       filename: string;
@@ -376,43 +502,17 @@ export class LibraryService {
       const uri = raw.uri || `spotify:playlist:${pid}`;
       const skipped = !!raw.skipped;
       const folder = this.utilsService.getPlaylistFolderPath(name);
-      const tracks = (raw.tracks || [])
+      const tracks = await Promise.all((raw.tracks || [])
         .filter((t) => t.artist && t.name)
-        .map((t) => {
-          const base = this.utilsService.trackFileBase(t.artist!, t.name!);
-          const key = this.utilsService.trackFileKey(t.artist!, t.name!);
-          const disk = this.onDiskFile(folder, base);
-          const job = jobs.get(key);
-          return {
-            n: t.n,
-            name: t.name as string,
-            artist: t.artist as string,
-            onDisk: !!disk,
-            available: !!disk || audio.has(key),
-            filename: disk ? basename(disk) : `${base}.${format}`,
-            acquisitionState: !disk ? job?.acquisitionState : null,
-            retryAt: !disk ? job?.retryAt : null,
-            searchLimit: job?.searchLimit,
-            networkAttempts: job?.networkAttempts,
-            operationAttempts: job?.operationAttempts,
-            error:
-              !disk &&
-              (job?.status === TrackStatusEnum.Error ||
-                job?.status === TrackStatusEnum.RetryWaiting)
-                ? job.error
-                : undefined,
-            missing:
-              !disk && job?.status === TrackStatusEnum.Error
-                ? isPermanentYoutubeMissing(job.error)
-                : undefined,
-          };
-        });
+        .map(async (t) => this.viewTrack(t, await audio.resolve(t, folder), jobs(t))));
       const onDisk = tracks.filter((t) => t.onDisk).length;
       const available = tracks.filter((t) => t.available).length;
       const failed = tracks.filter((t) => !t.onDisk && t.missing).length;
       const trackCount = skipped && tracks.length === 0 ? 0 : tracks.length;
+      const membershipVerified = hasCompleteSpotifyMembership(raw.membership, pid, raw.tracks || []);
       return {
-        playlist: {
+        playlist: this.withLibraryPresence({
+          ...playlistAttribution(raw),
           uri,
           id: pid,
           name,
@@ -432,19 +532,21 @@ export class LibraryService {
             : 0,
           lastPlayedAt: raw.lastPlayedAt || null,
           syncedAt: raw.syncedAt || null,
+          membershipVerified,
+          excludedItems: membershipVerified ? raw.membership!.excludedItemCount : undefined,
           file,
           spotifyUrl: `https://open.spotify.com/playlist/${pid}`,
-        },
+        }),
         tracks,
       };
     }
     throw new NotFoundException(`Playlist ${id} not found in static library`);
   }
 
-  resolveAudioPath(
+  async resolveAudioPath(
     playlistId: string,
     n: number,
-  ): { path: string; filename: string } {
+  ): Promise<{ path: string; filename: string }> {
     const dir = this.staticPlaylistsDir();
     const files = existsSync(dir)
       ? readdirSync(dir).filter((f) => f.endsWith('.json'))
@@ -466,8 +568,7 @@ export class LibraryService {
         (t) => t.n === n && t.artist && t.name,
       );
       if (!track) break;
-      const base = this.utilsService.trackFileBase(track.artist!, track.name!);
-      const disk = this.onDiskFile(folder, base);
+      const disk = (await this.indexAudioFiles().resolve(track, folder)).local;
       if (!disk) {
         throw new NotFoundException('No audio file on disk for that track');
       }
@@ -483,28 +584,52 @@ export class LibraryService {
   async download(
     uris: string[],
     options: AcquisitionOptions = {},
-  ): Promise<{ queued: number; skipped: number }> {
+    requestId?: string,
+  ): Promise<{ queued: number; skipped: number; reused?: number }> {
+    if (requestId) return this.downloadRequests().run(requestId, {
+      scope: 'selected', uris, options, destination: this.utilsService.getRootDownloadsPath(),
+    }, () => webAdmission.run(() => this.prepareDownloads(uris, options)));
+    return webAdmission.run(() => this.prepareDownloads(uris, options));
+  }
+
+  private requestStore: DownloadRequestStore | null = null;
+  private downloadRequests(): DownloadRequestStore {
+    const db = this.configService.get<string>(EnvironmentEnum.DB_PATH);
+    if (!db) throw new Error('DB_PATH is required for durable download receipts');
+    return this.requestStore ||= new DownloadRequestStore(join(dirname(resolve(db)), 'download-requests'));
+  }
+
+  downloadRequestStatus(id: string) { return this.downloadRequests().get(id); }
+
+  private async prepareDownloads(
+    uris: string[], options: AcquisitionOptions,
+  ): Promise<{ queued: number; skipped: number; reused?: number }> {
     const dir = this.staticPlaylistsDir();
     const audio = this.indexAudioFiles();
     const wanted = new Set(uris);
     let queued = 0;
     let skipped = 0;
+    let reused = 0;
+    let done = 0;
     const files = existsSync(dir)
       ? readdirSync(dir).filter((f) => f.endsWith('.json'))
       : [];
 
-    for (const file of files) {
+    const plans = files.flatMap(file => {
       const raw = this.readPlaylistFile(join(dir, file));
-      if (!raw || raw.skipped) continue;
+      if (!raw || raw.skipped) return [];
       const id = this.playlistId(raw, file);
-      if (!id) continue;
+      if (!id) return [];
       const uri = raw.uri || `spotify:playlist:${id}`;
-      if (!wanted.has(uri) && !wanted.has(id)) continue;
-
+      if (!wanted.has(uri) && !wanted.has(id)) return [];
       const name = raw.name || id;
-      if (this.isExcludedName(name)) continue;
+      if (this.isExcludedName(name)) return [];
+      return [{ raw, id, name, tracks: (raw.tracks || []).filter(t => t.artist && t.name) }];
+    });
+    webAdmission.update({ total: plans.reduce((sum, plan) => sum + plan.tracks.length, 0) });
+    for (const { raw, id, name, tracks } of plans) {
+      webAdmission.update({ playlist: name, artist: '', name: '', phase: 'checking' });
       const spotifyUrl = `https://open.spotify.com/playlist/${id}`;
-      const tracks = (raw.tracks || []).filter((t) => t.artist && t.name);
       let playlist = await this.playlistService.findBySpotifyUrl(spotifyUrl);
       if (!playlist) {
         playlist = await this.playlistService.save({
@@ -519,16 +644,17 @@ export class LibraryService {
 
       const existing = new Map(
         (playlist.tracks || []).map((t) => [
-          this.utilsService.trackFileKey(t.artist, t.name),
+          sourceKey(t),
           t,
         ]),
       );
 
+      const prepared = new Set<string>();
       for (const track of tracks) {
-        const fileKey = this.utilsService.trackFileKey(
-          track.artist,
-          track.name,
-        );
+        webAdmission.update({ artist: track.artist, name: track.name, phase: 'checking' });
+        const fileKey = sourceKey(track);
+        if (prepared.has(fileKey)) { skipped++; webAdmission.update({ done: ++done }); continue; }
+        prepared.add(fileKey);
         const prior = existing.get(fileKey);
         const fileBase = this.utilsService.trackFileBase(
           track.artist,
@@ -536,9 +662,10 @@ export class LibraryService {
         );
         const format =
           this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3';
-        const dest = join(folder, `${fileBase}.${format}`);
-        const alreadyHere = this.isNonEmptyFile(dest);
-        const source = alreadyHere ? dest : audio.get(fileKey);
+        const media = await audio.resolve(track, folder);
+        const dest = media.destination;
+        const alreadyHere = !!media.local;
+        const source = media.source;
 
         const payload = {
           artist: track.artist,
@@ -546,11 +673,13 @@ export class LibraryService {
           spotifyUrl:
             track.href ||
             (track.id ? `https://open.spotify.com/track/${track.id}` : null),
-          durationMs: track.durationMs || null,
+          durationMs: media.expectedMs || null,
+          audioFilename: basename(dest),
           coverUrl: track.coverUrl || playlist.coverUrl,
         };
 
-        if (source && !alreadyHere) {
+        if (source && (!alreadyHere || media.verification !== 'duration-match')) {
+          webAdmission.update({ phase: 'verifying' });
           try {
             payload.durationMs = await this.trackService.verifyLocalAudio(
               payload,
@@ -559,26 +688,40 @@ export class LibraryService {
           } catch {
             // A bad/unknown local source remains untouched. Let the durable
             // worker record a needs-retry outcome rather than copy it as success.
+            if (prior?.id) await this.trackService.update(prior.id, { ...prior, ...payload });
             const added = prior?.id
               ? await this.trackService.retry(prior.id, options)
               : await this.trackService.create(payload, playlist, options);
             added ? queued++ : skipped++;
+            webAdmission.update({ done: ++done });
             continue;
           }
         }
 
-        if (source && !alreadyHere) {
-          materialize(source, [dest]);
+        if (source) {
+          if (!alreadyHere) webAdmission.update({ phase: 'copying' });
+          const copied = materializeForTrack(source, [dest], payload, {
+            source: media.sourceFingerprint,
+            local: media.local ? { [media.local]: media.localFingerprint } : {},
+          });
+          payload.audioFilename = basename(copied.destinations[0]);
+          reused += copied.added;
         }
 
+        webAdmission.update({ phase: 'queueing' });
         if (source || alreadyHere) {
           if (prior?.id) {
-            if (prior.status !== TrackStatusEnum.Completed || prior.error) {
+            if (prior.status !== TrackStatusEnum.Completed || prior.error ||
+                prior.audioFilename !== payload.audioFilename || prior.durationMs !== payload.durationMs ||
+                prior.acquisitionState || prior.retryAt) {
               await this.trackService.update(prior.id, {
                 ...prior,
+                ...payload,
                 durationMs: payload.durationMs || prior.durationMs,
                 status: TrackStatusEnum.Completed,
                 error: null,
+                acquisitionState: null,
+                retryAt: null,
               });
             }
           } else {
@@ -587,7 +730,8 @@ export class LibraryService {
           skipped++;
         } else if (prior) {
           if (
-            (prior.status === TrackStatusEnum.Error ||
+            (prior.status === TrackStatusEnum.New ||
+              prior.status === TrackStatusEnum.Error ||
               prior.acquisitionState === 'no-candidate' ||
               isCandidateOutcome(prior.error) ||
               prior.status === TrackStatusEnum.Completed) &&
@@ -600,6 +744,7 @@ export class LibraryService {
             ) {
               skipped++;
             } else {
+              await this.trackService.update(prior.id, { ...prior, ...payload });
               const added = await this.trackService.retry(prior.id, options);
               added ? queued++ : skipped++;
             }
@@ -615,6 +760,7 @@ export class LibraryService {
           added ? queued++ : skipped++;
         }
         if (!prior) existing.set(fileKey, payload as any);
+        webAdmission.update({ done: ++done });
       }
     }
 
@@ -624,15 +770,22 @@ export class LibraryService {
       );
     }
     this.logger.debug(`Library download queued=${queued} skipped=${skipped}`);
-    return { queued, skipped };
+    // Keep skipped's compatibility meaning, but distinguish newly materialized
+    // local copies from genuine no-op entries in the web acknowledgement.
+    return { queued, skipped, ...(reused ? { reused } : {}) };
   }
 
-  async resync(id: string): Promise<{
-    id: string;
-    name: string;
-    before: number;
-    after: number;
-  }> {
+  async resync(id: string): Promise<PlaylistSyncResult> {
+    const current = this.playlistSyncs.get(id);
+    if (current) return current;
+    const work = this.resyncPlaylist(id).finally(() => this.playlistSyncs.delete(id));
+    this.playlistSyncs.set(id, work);
+    return work;
+  }
+
+  private readonly playlistSyncs = new Map<string, Promise<PlaylistSyncResult>>();
+
+  private async resyncPlaylist(id: string): Promise<PlaylistSyncResult> {
     const dir = this.staticPlaylistsDir();
     if (!existsSync(dir)) {
       throw new NotFoundException('Static playlists path missing');
@@ -655,6 +808,8 @@ export class LibraryService {
       ).length;
       const spotifyUrl = `https://open.spotify.com/playlist/${pid}`;
       let fetched: SpotifyTrackList = [];
+      let verifiedMembership = false;
+      let apiFailure = '';
       /* Array element shape is supplied by SpotifyApiService. */
       let fetchedRows: Array<{
         id?: string;
@@ -675,21 +830,32 @@ export class LibraryService {
           spotifyUrl,
           known,
         );
-        if (fetched.truncated) {
-          throw new Error(
-            `Spotify returned an incomplete playlist snapshot for ${pid}`,
-          );
-        }
         fetchedRows = fetched;
       } catch (err) {
+        apiFailure = err instanceof Error ? err.message : String(err);
         this.logger.warn(
           `Spotify API resync failed for ${pid}: ${
             err instanceof Error ? err.message : err
           }`,
         );
       }
+      if (/CDP.*(?:down|unavailable|not connected|disconnected)|Chrome (?:bridge|connection)/i.test(apiFailure)) {
+        throw new HttpException('The Chrome connection for Spotify is unavailable. Saved membership kept.', HttpStatus.SERVICE_UNAVAILABLE);
+      }
+      // An explicitly incomplete API result must never be rescued by a page
+      // scrape that merely happens to have the expected number of rows.
+      if (fetched.truncated) {
+        throw new HttpException(
+          `Could not load the live Spotify track list: incomplete response for ${pid}. Saved membership kept.`,
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
+      verifiedMembership = hasCompleteSpotifyMembership(fetched.membership, pid, fetchedRows);
+      if (fetched.membership && !verifiedMembership) {
+        throw new HttpException('Spotify membership evidence did not match the returned tracks. Saved membership kept.', HttpStatus.BAD_GATEWAY);
+      }
       // Session/spclient returns the full list. HTML scrape is last resort.
-      if (!fetchedRows.length) {
+      if (!fetchedRows.length && !verifiedMembership) {
         try {
           const scraped = await this.scrapePlaylistPage(pid);
           if (scraped.truncated) {
@@ -708,7 +874,7 @@ export class LibraryService {
           );
         }
       }
-      if (!fetchedRows.length) {
+      if (!fetchedRows.length && !verifiedMembership) {
         throw new HttpException(
           'Could not load the live Spotify track list (API quota and page scrape both failed)',
           HttpStatus.BAD_GATEWAY,
@@ -734,30 +900,85 @@ export class LibraryService {
                 old.artist === t.artist,
             )?.durationMs,
         }));
-      if (!tracks.length) {
+      if (!tracks.length && !verifiedMembership) {
         throw new NotFoundException(
           'Spotify returned no tracks for that playlist',
         );
       }
       if (tracks.length < before) {
-        throw new HttpException(
-          `Refusing to shrink ${name} (${pid}) ${before} -> ${tracks.length}`,
-          HttpStatus.BAD_GATEWAY,
+        if (!verifiedMembership) {
+          throw new HttpException(
+            `Refusing to shrink ${name}: Spotify membership was not fully verified. Saved membership kept.`,
+            HttpStatus.BAD_GATEWAY,
+          );
+        }
+        // Removals (including emptying a playlist) require a second complete,
+        // matching API observation. Read again; never infer a removal from a
+        // short/error response or the discovery endpoint's count alone.
+        const confirmed = await this.spotifyApiService.getAllPlaylistTracks(
+          spotifyUrl,
+          new Map(fetchedRows.map(track => [track.id!, track])),
         );
+        if (confirmed.truncated ||
+            !hasCompleteSpotifyMembership(confirmed.membership, pid, confirmed) ||
+            confirmed.membership!.itemCount !== fetched.membership!.itemCount ||
+            confirmed.membership!.orderedTrackIdsHash !== fetched.membership!.orderedTrackIdsHash) {
+          throw new HttpException(
+            `Spotify playlist changed or was incomplete while confirming removals from ${name}. Saved membership kept; sync again.`,
+            HttpStatus.BAD_GATEWAY,
+          );
+        }
+      }
+      const previous = (raw.tracks || []).filter(track => track.artist && track.name);
+      const kept = new Set(tracks.map(track => sourceKey(track)));
+      const removed = verifiedMembership
+        ? previous.filter(track => !kept.has(sourceKey(track)))
+        : [];
+      let removedFiles = 0;
+      if (removed.length) {
+        const folder = this.utilsService.getPlaylistFolderPath(name);
+        removedFiles = unpublishPlaylistCopies(folder, removed, tracks).removedPaths.length;
+        await this.dropRemovedPlaylistWork(spotifyUrl, removed, tracks);
       }
       const next = {
         ...raw,
         trackCount: tracks.length,
         tracks,
+        // A focused/API read does not supply the discovery snapshot ID. The
+        // previous ID cannot certify newly fetched membership. Library sync
+        // establishes its next baseline only after this verified read succeeds.
+        snapshotId: null,
+        membership: verifiedMembership ? fetched.membership : undefined,
         syncedAt: new Date().toISOString(),
       };
       this.writePlaylistFile(full, next);
       this.logger.debug(
-        `Resynced ${name} (${pid}): ${before} -> ${tracks.length}`,
+        `Resynced ${name} (${pid}): ${before} -> ${tracks.length}; removed ${removedFiles} playlist copies`,
       );
-      return { id: pid, name, before, after: tracks.length };
+      return { id: pid, name, before, after: tracks.length, removedFiles };
     }
     throw new NotFoundException(`Playlist ${id} not found in static library`);
+  }
+
+  private async dropRemovedPlaylistWork(
+    spotifyUrl: string,
+    removed: StaticTrack[],
+    remaining: StaticTrack[],
+  ): Promise<void> {
+    const playlist = await this.playlistService.findBySpotifyUrl(spotifyUrl);
+    if (!playlist?.id) return;
+    const remainingIds = new Set(remaining.map(track => trackSourceId(track)).filter((id): id is string => !!id));
+    const remainingSongs = new Set(remaining.map(track => songKey(track.artist!, track.name!)));
+    const removedIds = new Set(removed.map(track => trackSourceId(track)).filter((id): id is string => !!id && !remainingIds.has(id)));
+    const removedSongs = new Set(
+      removed.map(track => songKey(track.artist!, track.name!)).filter(key => !remainingSongs.has(key)),
+    );
+    const rows = await this.trackService.getAllByPlaylist(playlist.id);
+    for (const row of rows) {
+      const id = trackSourceId(row);
+      const drop = id ? removedIds.has(id) : removedSongs.has(songKey(row.artist, row.name));
+      if (drop) await this.trackService.remove(row.id);
+    }
   }
 
   private async scrapePlaylistPage(
@@ -765,7 +986,7 @@ export class LibraryService {
   ): Promise<ScrapedPlaylistResult> {
     if (!(await this.cdpProxy.healthy())) {
       throw new Error(
-        'CDP proxy is down. Start scripts/cdp-keepalive.mjs once and click Allow in Chrome a single time.',
+        'Chrome bridge is disconnected. Saved playlists remain available; reconnect only on an explicit user request.',
       );
     }
     const { targetId, sessionId } = await this.cdpProxy.tab();
@@ -892,53 +1113,14 @@ export class LibraryService {
     return { tracks, expectedCount: liveCount, truncated };
   }
 
-  private bulkResync: {
-    running: boolean;
-    done: number;
-    total: number;
-    updated: number;
-    errors: string[];
-    current: string;
-    startedAt: string | null;
-    finishedAt: string | null;
-  } = {
-    running: false,
-    done: 0,
-    total: 0,
-    updated: 0,
-    errors: [],
-    current: '',
-    startedAt: null,
-    finishedAt: null,
-  };
-
+  /** Compatibility endpoints share the same durable operation as every sync. */
   resyncAllStatus() {
-    return { ...this.bulkResync, errors: this.bulkResync.errors.slice(-20) };
+    const state = this.librarySyncStatus();
+    return { ...state, updated: state.changed };
   }
 
-  startResyncAll(): { started: boolean; already?: boolean } {
-    if (this.bulkResync.running) {
-      return { started: false, already: true };
-    }
-    this.bulkResync = {
-      running: true,
-      done: 0,
-      total: 0,
-      updated: 0,
-      errors: [],
-      current: '',
-      startedAt: new Date().toISOString(),
-      finishedAt: null,
-    };
-    setImmediate(() => {
-      this.runResyncAll().catch((err) => {
-        this.logger.error(`resync-all failed: ${err}`);
-        this.bulkResync.running = false;
-        this.bulkResync.finishedAt = new Date().toISOString();
-        this.bulkResync.errors.push(String(err?.message || err));
-      });
-    });
-    return { started: true };
+  startResyncAll() {
+    return this.startSpotifySync('saved-playlists', () => this.runResyncAll());
   }
 
   private includedDumpIds(): Array<{ id: string; uri: string; name: string }> {
@@ -963,30 +1145,31 @@ export class LibraryService {
 
   private async runResyncAll(): Promise<void> {
     const ids = this.includedDumpIds();
-    this.bulkResync.total = ids.length;
+    this.librarySync.total = ids.length;
+    this.persistLibrarySync();
     for (const row of ids) {
-      this.bulkResync.current = row.name;
+      this.librarySync.current = row.name;
+      this.persistLibrarySync();
       try {
         const res = await this.resync(row.id);
-        if (res.after !== res.before) this.bulkResync.updated++;
+        if (res.after !== res.before) this.librarySync.changed++;
       } catch (err) {
-        this.bulkResync.errors.push(
+        this.librarySync.errors.push(
           `${row.name}: ${err instanceof Error ? err.message : err}`,
         );
       }
-      this.bulkResync.done++;
+      this.librarySync.done++;
+      this.persistLibrarySync();
     }
-    this.bulkResync.running = false;
-    this.bulkResync.current = '';
-    this.bulkResync.finishedAt = new Date().toISOString();
-    this.logger.debug(
-      `resync-all finished ${this.bulkResync.done}/${this.bulkResync.total} updated=${this.bulkResync.updated} errors=${this.bulkResync.errors.length}`,
-    );
   }
 
   async downloadRemaining(
     options: AcquisitionOptions = {},
-  ): Promise<{ queued: number; skipped: number }> {
+    requestId?: string,
+  ): Promise<{ queued: number; skipped: number; reused?: number }> {
+    if (requestId) return this.downloadRequests().run(requestId, {
+      scope: 'remaining', uris: [], options, destination: this.utilsService.getRootDownloadsPath(),
+    }, () => this.downloadRemaining(options));
     const uris = this.includedDumpIds().map((r) => r.uri);
     return this.download(uris, {
       ...options,
@@ -996,56 +1179,109 @@ export class LibraryService {
     });
   }
 
-  private librarySync: {
-    running: boolean;
-    done: number;
-    total: number;
-    discovered: number;
-    changed: number;
-    errors: string[];
-    current: string;
-    startedAt: string | null;
-    finishedAt: string | null;
-  } = {
-    running: false,
-    done: 0,
-    total: 0,
-    discovered: 0,
-    changed: 0,
-    errors: [],
-    current: '',
-    startedAt: null,
-    finishedAt: null,
-  };
+  private syncStatusFile: string | null = null;
+  private librarySync: LibrarySyncState = emptyLibrarySync();
+  private observedLibrary: SpotifyLibraryObservation | undefined;
+  private observedLibraryIds = new Set<string>();
 
-  librarySyncStatus() {
-    return { ...this.librarySync, errors: this.librarySync.errors.slice(-20) };
+  private withLibraryPresence(playlist: LibraryPlaylist): LibraryPlaylist {
+    const observation = this.librarySync.libraryObservation;
+    if (!observation) return playlist;
+    if (observation !== this.observedLibrary) {
+      this.observedLibraryIds = new Set(observation.playlistIds);
+      this.observedLibrary = observation;
+    }
+    return { ...playlist, libraryPresence: {
+      state: this.observedLibraryIds.has(playlist.id) ? 'present' : 'not-returned',
+      checkedAt: observation.checkedAt,
+    } };
   }
 
-  startLibrarySync(): { started: boolean; already?: boolean } {
-    if (this.librarySync.running) return { started: false, already: true };
-    this.librarySync = {
-      running: true,
-      done: 0,
-      total: 0,
-      discovered: 0,
-      changed: 0,
-      errors: [],
-      current: '',
-      startedAt: new Date().toISOString(),
-      finishedAt: null,
+  // Project metadata on read, without invalidating or rebuilding the audio index.
+  private withLibraryObservation(result: LibraryListResponse): LibraryListResponse {
+    if (!this.librarySync.libraryObservation) return result;
+    return { ...result, playlists: result.playlists.map(p => this.withLibraryPresence(p)) };
+  }
+
+  private persistLibrarySync(): boolean {
+    try { writeLibrarySync(this.syncStatusFile, this.librarySync); return true; }
+    catch (error) { this.logger.warn(`Could not persist Spotify sync status: ${error}`); return false; }
+  }
+
+  librarySyncStatus() {
+    const { libraryObservation: _privateLibrary, ...status } = this.librarySync;
+    return { ...status, errors: status.errors.slice(-20) };
+  }
+
+  spotifyConnectionState() {
+    return this.cdpProxy.connectionState();
+  }
+
+  connectSpotifyChrome() {
+    return this.cdpProxy.connectOnce();
+  }
+
+  private syncTask: Promise<void> | null = null;
+
+  private startSpotifySync(scope: SpotifySyncScope, work: () => Promise<void>, playlistId: string | null = null) {
+    if (this.librarySync.running) return { started: false, already: true, operationId: this.librarySync.operationId, scope: this.librarySync.scope };
+    const state: LibrarySyncState = {
+      ...emptyLibrarySync(), running: true, scope, playlistId,
+      ...(this.librarySync.libraryObservation ? { libraryObservation: this.librarySync.libraryObservation } : {}),
+      operationId: randomUUID(), startedAt: new Date().toISOString(),
+      total: scope === 'playlist' ? 1 : 0,
+      current: playlistId ? this.includedDumpIds().find(row => row.id === playlistId)?.name || playlistId : '',
     };
-    setImmediate(() => {
-      this.runLibrarySync().catch((error) => {
-        this.logger.error(`library sync failed: ${error}`);
-        this.librarySync.running = false;
-        this.librarySync.finishedAt = new Date().toISOString();
-        this.librarySync.errors.push(
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    });
-    return { started: true };
+    const previous = this.librarySync;
+    this.librarySync = state;
+    state.playlistName = scope === 'playlist' ? state.current : null;
+    if (!this.persistLibrarySync()) {
+      this.librarySync = previous;
+      throw new HttpException('Could not save Spotify sync status. No sync was started.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    // Work belongs to the server. It is not cancelled by a lost HTTP client.
+    const task = new Promise<void>(resolve => setImmediate(resolve)).then(work);
+    this.syncTask = task;
+    const finish = (error?: unknown) => {
+      if (error) state.errors.push(error instanceof Error ? error.message : String(error));
+      state.running = false;
+      state.current = '';
+      state.finishedAt = new Date().toISOString();
+      state.failureKind = state.errors.length ? spotifySyncFailure(state.errors.at(-1)!) : null;
+      this.persistLibrarySync();
+      this.syncTask = null;
+    };
+    // Observe rejection even for callers using the non-blocking start endpoint.
+    task.then(() => finish(), error => finish(error));
+    return { started: true, operationId: state.operationId, scope };
+  }
+
+  startLibrarySync() {
+    return this.startSpotifySync('library', () => this.runLibrarySync());
+  }
+
+  startPlaylistSync(id: string) {
+    if (!this.librarySync.running && !this.includedDumpIds().some(row => row.id === id)) {
+      throw new NotFoundException('Playlist not found in saved library');
+    }
+    return this.startSpotifySync('playlist', async () => {
+      this.librarySync.result = await this.resync(id);
+      this.librarySync.done = 1;
+      this.librarySync.changed = 1;
+    }, id);
+  }
+
+  /** Retain the historical blocking endpoint without giving it a second lane. */
+  async resyncAndWait(id: string): Promise<PlaylistSyncResult> {
+    if (this.librarySync.running &&
+        (this.librarySync.scope !== 'playlist' || this.librarySync.playlistId !== id)) {
+      throw new ConflictException('A Spotify sync is already running. Follow it in Current activity.');
+    }
+    if (!this.librarySync.running) this.startPlaylistSync(id);
+    const state = this.librarySync;
+    await this.syncTask;
+    if (!state.result) throw new HttpException('Spotify sync ended without a result', HttpStatus.BAD_GATEWAY);
+    return { ...state.result };
   }
 
   private localPlaylistFiles(): Map<
@@ -1071,10 +1307,24 @@ export class LibraryService {
   }
 
   private async runLibrarySync(): Promise<void> {
+    // getLibraryPlaylists collects and validates every page before returning.
+    // A rejected/partial discovery must never imply that a playlist disappeared.
     const live = await this.spotifyApiService.getLibraryPlaylists();
+    const observation = { checkedAt: new Date().toISOString(), playlistIds: live.map(item => item.id) };
+    if (!validLibraryObservation(observation)) throw new Error('Spotify library discovery incomplete: invalid playlist identities. Saved library kept.');
+    const previousObservation = this.librarySync.libraryObservation;
+    const previousTotal = this.librarySync.total;
+    this.librarySync.libraryObservation = observation;
+    this.librarySync.total = live.length;
+    if (!this.persistLibrarySync()) {
+      if (previousObservation) this.librarySync.libraryObservation = previousObservation;
+      else delete this.librarySync.libraryObservation;
+      this.librarySync.total = previousTotal;
+      throw new Error('Could not save Spotify library observation');
+    }
+    this.emitCoverage();
     const local = this.localPlaylistFiles();
     const dir = this.staticPlaylistsDir();
-    this.librarySync.total = live.length;
 
     for (let i = 0; i < live.length; i++) {
       const item = live[i];
@@ -1094,6 +1344,7 @@ export class LibraryService {
             trackCount: 0,
             tracks: [],
             snapshotId: null,
+            owner: item.owner || null,
           };
           this.writePlaylistFile(full, raw);
           entry = { file, full, raw };
@@ -1110,19 +1361,25 @@ export class LibraryService {
           entry.raw.snapshotId !== item.snapshotId;
         const snapshotBaselineMissing =
           !entry.raw.snapshotId && !!item.snapshotId;
-        const countChanged =
-          item.trackCount > 0 && storedCount !== item.trackCount;
+        const completeBaseline = hasCompleteSpotifyMembership(entry.raw.membership, item.id, entry.raw.tracks || []);
+        const storedItemCount = completeBaseline ? entry.raw.membership!.itemCount : storedCount;
+        const countChanged = Number.isSafeInteger(item.trackCount) && item.trackCount >= 0 &&
+          storedItemCount !== item.trackCount;
         const needsTracks =
-          storedCount === 0 ||
+          !completeBaseline ||
+          !item.snapshotId ||
           snapshotBaselineMissing ||
           snapshotChanged ||
           countChanged;
 
         if (needsTracks) {
           await this.resync(item.id);
-          this.librarySync.changed++;
           const refreshed = this.readPlaylistFile(entry.full) || entry.raw;
           entry.raw = refreshed;
+          if (!hasCompleteSpotifyMembership(refreshed.membership, item.id, refreshed.tracks || [])) {
+            throw new Error('Spotify playlist membership was not fully verified. No new snapshot baseline was saved.');
+          }
+          this.librarySync.changed++;
         }
 
         const metadata: StaticPlaylistFile = {
@@ -1131,9 +1388,14 @@ export class LibraryService {
           id: item.id,
           uri: item.uri,
           rank,
-          snapshotId: item.snapshotId || entry.raw.snapshotId || null,
+          snapshotId: item.snapshotId || null,
+          owner: item.owner || entry.raw.owner || null,
         };
-        this.writePlaylistFile(entry.full, metadata);
+        // No-op sync must not churn every dump's inode/mtime or imply that its
+        // track list was refreshed. Owner/name/order changes still persist.
+        if (JSON.stringify(metadata) !== JSON.stringify(entry.raw)) {
+          this.writePlaylistFile(entry.full, metadata);
+        }
         entry.raw = metadata;
       } catch (error) {
         this.librarySync.errors.push(
@@ -1141,11 +1403,9 @@ export class LibraryService {
         );
       } finally {
         this.librarySync.done++;
+        this.persistLibrarySync();
       }
     }
-    this.librarySync.running = false;
-    this.librarySync.current = '';
-    this.librarySync.finishedAt = new Date().toISOString();
     this.logger.debug(
       `library sync finished ${this.librarySync.done}/${this.librarySync.total} discovered=${this.librarySync.discovered} changed=${this.librarySync.changed} errors=${this.librarySync.errors.length}`,
     );

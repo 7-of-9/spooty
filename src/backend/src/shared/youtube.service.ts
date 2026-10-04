@@ -4,10 +4,12 @@ import {
   OnApplicationShutdown,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { sourceKey } from './acquisition/identity';
 import { mkdirSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { TrackEntity } from '../track/track.entity';
 import { AcquisitionOwner } from './acquisition-owner';
+import { webActivity } from './web-activity';
 import {
   YoutubePace,
   PaceLever,
@@ -28,8 +30,10 @@ import {
   DURATION_SOURCE_MISSING,
 } from './acquisition/duration-policy';
 import { candidateLimits } from './acquisition/candidate-policy';
-import { publishMp3 } from './acquisition/publication';
-import { youtubeVideoId, isNonEmptyBatchFile } from './youtube-download-batch';
+import { publishMp3ForTrack, PublishedMedia } from './acquisition/publication';
+import { mediaFingerprint, mediaUnchanged } from './acquisition/media-file';
+import { SearchDiagnostics } from './acquisition/search-diagnostics';
+import { youtubeVideoId } from './youtube-download-batch';
 import { UtilsService } from './utils.service';
 const NodeID3 = require('node-id3');
 
@@ -69,6 +73,16 @@ export class YoutubeService implements OnApplicationShutdown {
   ownerSnapshot() {
     return this.owner.snapshot();
   }
+  webQueueSnapshot() {
+    return this.owner.webQueueSnapshot();
+  }
+  async webActivitySnapshot() {
+    const queue = await this.owner.webActivityQueue();
+    return queue ? webActivity.snapshot(queue) : null;
+  }
+  resumeWebQueues() {
+    return this.owner.resumeWebQueues();
+  }
   assertWebAllowed() {
     return this.owner.assertWebAllowed();
   }
@@ -104,24 +118,35 @@ export class YoutubeService implements OnApplicationShutdown {
     );
   }
 
-  private engine(): Transport {
-    if (this.transport) return this.transport;
+  searchEvidence(key: string) {
+    return new SearchDiagnostics(
+      join(this.acquisitionDirectory(), 'search-diagnostics'),
+    ).read(key);
+  }
+
+  configurationError(): string | null {
     const format =
       this.configService.get<string>('FORMAT') || process.env.FORMAT || 'mp3';
     const quality = String(
-      this.configService.get('QUALITY') ?? process.env.QUALITY ?? '0',
-    );
+      this.configService.get('QUALITY') ?? process.env.QUALITY ?? '',
+    ).trim() || '0';
     if (format !== 'mp3' || quality !== '0')
-      throw new Error(
-        'Acquisition configuration requires FORMAT=mp3 and QUALITY=0',
-      );
-    for (const key of ['YT_SEARCH_BATCH_SIZE', 'YT_DOWNLOAD_BATCH_SIZE']) {
+      return 'Acquisition configuration requires FORMAT=mp3 and QUALITY=0';
+    // The retained shared profile owns batching (8). Legacy single-item web
+    // worker env vars are not transport overrides in this mode. Rejecting them
+    // stranded resumed queues before any YouTube request could start.
+    for (const key of this.provenProfile ? [] : ['YT_SEARCH_BATCH_SIZE', 'YT_DOWNLOAD_BATCH_SIZE']) {
       const configured = this.configService.get(key) ?? process.env[key];
-      if (configured !== undefined && Number(configured) !== 8)
-        throw new Error(
-          'Acquisition configuration requires batch size8; remove legacy web batch overrides',
-        );
+      if (configured !== undefined && String(configured).trim() !== '' && Number(configured) !== 8)
+        return 'Acquisition configuration requires batch size8; remove legacy web batch overrides';
     }
+    return null;
+  }
+
+  private engine(): Transport {
+    if (this.transport) return this.transport;
+    const configurationError = this.configurationError();
+    if (configurationError) throw new Error(configurationError);
     const state = this.acquisitionDirectory();
     const root = resolve(dirname(require.resolve('ytdlp-nodejs')), '../../..');
     const temporary = join(dirname(state), 'web-acquisition-tmp');
@@ -165,12 +190,10 @@ export class YoutubeService implements OnApplicationShutdown {
 
   song(track: TrackEntity): any {
     return {
-      key: new UtilsService(this.configService).trackFileKey(
-        track.artist,
-        track.name,
-      ),
+      key: sourceKey(track),
       artist: track.artist,
       name: track.name,
+      album: track.searchAlbum,
       durationMs: track.durationMs,
       url: track.youtubeUrl || null,
       durationCandidates: track.youtubeCandidates ?? undefined,
@@ -222,10 +245,18 @@ export class YoutubeService implements OnApplicationShutdown {
     onProgress?: (progress: { percentage: number }) => void,
     onStart?: () => void | Promise<void>,
     cookiesFirst = false,
-  ): Promise<void> {
-    if (isNonEmptyBatchFile(output)) return;
+  ): Promise<PublishedMedia> {
+    // A file may have arrived after worker preparation. Existing bytes are not
+    // enough: verify this source's duration before skipping the media request.
+    const existing = mediaFingerprint(output);
+    if (existing) {
+      try {
+        await this.verifyAudioDuration(output, track.durationMs);
+        if (mediaUnchanged(output, existing)) return { path: output, created: false };
+      } catch { /* Preserve it; a verified new source can use another filename. */ }
+    }
     const song = { ...this.song(track), cookiesNext: cookiesFirst };
-    await this.enqueue('download', {
+    return this.enqueue('download', {
       song,
       track,
       output,
@@ -343,20 +374,22 @@ export class YoutubeService implements OnApplicationShutdown {
         const failures = await engine.download(
           work.map((item) => item.song),
           async (song, stagedPath, evidence) => {
+            const proof = mediaFingerprint(stagedPath);
             await this.verifyAudioDuration(stagedPath, song.durationMs);
             for (const item of work.filter(
               (item) => item.song.key === song.key,
             )) {
-              publishMp3(
+              const publication = publishMp3ForTrack(
                 stagedPath,
                 item.output,
-                { title: song.name, artist: song.artist },
+                item.track,
                 (tags, path) => NodeID3.write(tags, path),
+                proof,
               );
               item.track.sourceEvidence = evidence || null;
               item.onProgress?.({ percentage: 100 });
+              if (this.active.delete(item)) item.resolve(publication);
             }
-            settle(song.key);
           },
           admitted,
           true,

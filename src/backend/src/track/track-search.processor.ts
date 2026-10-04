@@ -9,6 +9,7 @@ import {
 import { TrackService } from './track.service';
 import { TrackEntity } from './track.entity';
 import { youtubeRetryAttempt } from './youtube-async-retry';
+import { WorkerActivity } from './worker-activity';
 
 /**
  * See track-download.processor.ts for why this reads `process.env` directly
@@ -24,6 +25,7 @@ const SEARCH_CONCURRENCY = webWorkerConcurrency('search');
   lockDuration: 15 * 60 * 1000,
 })
 export class TrackSearchProcessor extends WorkerHost {
+  readonly activity = new WorkerActivity();
   constructor(
     private readonly trackService: TrackService,
     @Optional()
@@ -34,6 +36,10 @@ export class TrackSearchProcessor extends WorkerHost {
   }
 
   async process(job: Job<TrackEntity, void, string>): Promise<void> {
+    return this.activity.run(() => this.processTrack(job));
+  }
+
+  private async processTrack(job: Job<TrackEntity, void, string>): Promise<void> {
     // Only duration-selected ready candidates count. Old cached URLs must not
     // fill this buffer and starve the searches needed to replace wrong sources.
     if (

@@ -57,8 +57,8 @@ describe('durable shared candidate selection across CLI/web handback', () => {
     };
     f.service.rejectCandidate(track);
     (f.transport.process as jest.Mock).mockImplementation(
-      async (_args, _kind, _timeout, line) => {
-        line(searchDocument('A B', []));
+      async (args, _kind, _timeout, line) => {
+        line(searchDocument(args.at(-1).replace(/^ytsearch\d+:/, ''), []));
         return { code: 0 };
       },
     );

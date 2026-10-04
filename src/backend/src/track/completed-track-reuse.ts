@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, linkSync, mkdirSync, statSync } from 'fs';
-import { dirname, isAbsolute, relative, resolve } from 'path';
-import { materialize } from '../shared/acquisition/publication';
+import { existsSync, statSync } from 'fs';
+import { isAbsolute, relative, resolve } from 'path';
+import { materialize, materializeForTrack } from '../shared/acquisition/publication';
+import { MediaResolution } from '../shared/acquisition/local-media';
 
 function inside(root: string, candidate: string): boolean {
   const rel = relative(resolve(root), resolve(candidate));
@@ -30,9 +31,18 @@ export function reuseCompletedTrackFile(
   if (!inside(downloadsRoot, source) || !inside(downloadsRoot, destination)) {
     throw new Error('Refusing to reuse audio outside downloads root');
   }
-  if (isNonEmptyFile(destination)) return true;
   if (!isNonEmptyFile(source)) return false;
 
   materialize(source, [destination]);
   return isNonEmptyFile(destination);
+}
+
+export function reuseCompletedTrackMedia(track: any, media: MediaResolution, downloadsRoot: string): string | null {
+  if (!media.source) return null;
+  if (!inside(downloadsRoot, media.source) || !inside(downloadsRoot, media.destination))
+    throw new Error('Refusing to reuse audio outside downloads root');
+  return materializeForTrack(media.source, [media.destination], track, {
+    source: media.sourceFingerprint,
+    local: media.local ? { [media.local]: media.localFingerprint } : {},
+  }).destinations[0];
 }

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { database } from './catalog.mjs';
+import { database, sourceJournal } from './catalog.mjs';
 import { selectionStateOnResume } from './candidate-policy.mjs';
 import { DURATION_NO_CANDIDATE } from './duration-policy.mjs';
 
@@ -41,7 +41,7 @@ export async function readJournal(path) {
 export function resumePlan(songs, prior, options) {
   const counts = { saved: 0, missing: 0, noCandidate: 0, exhaustedErrors: 0, ready: 0, pending: 0 };
   for (const song of songs) {
-    const state = resumedSong(song, prior.get(song.key), options).state;
+    const state = resumedSong(song, sourceJournal(song, prior), options).state;
     counts[{ 'no-candidate': 'noCandidate', error: 'exhaustedErrors' }[state] || state]++;
   }
   return { ...counts, actionable: counts.ready + counts.pending,

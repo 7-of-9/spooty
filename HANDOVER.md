@@ -1,5 +1,1388 @@
 # Handover: Spooty library MP3 backfill + YouTube throughput
 
+## Latest — 3 October 2026, 10:50 Bangkok: playlist 50 refreshed, medley v6 published
+
+Claude's latest work was the automix v6 continuation, not the older bulk-acquisition
+handover below. Its 1 October turn stopped at a session limit with scoring code
+written but five of ten blend tests failing. Those failures are now repaired.
+
+- User authorized stopping the specifically identified stale Codex session 69403
+  in `/Users/dom/src/tmp`. Its PID/start identity was checked before TERM; it and
+  all identified browser-tool children have exited. The browser preflight passed
+  all seven checks. One authorized connection through existing singleton 40434
+  succeeded. No replacement browser/proxy or permission click was used.
+- Playlist `50` (`4tlyiGCRW6LH5BqF0F30Ib`) synced through the normal backend API at
+  09:16:57 Bangkok: 96 -> 99 tracks, verified membership, no removals. The three
+  additions already existed elsewhere in the active media library. Shared
+  `LocalMediaIndex` duration verification and `materializeForTrack` reused those
+  exact local sources. The API subsequently verified 99/99 in folder 50.
+- Added tracks: Audioslave — Show Me How to Live; The Thrillseekers/Hydra —
+  Affinity (Shah and Del Mar Coastline Remix); Jon Hopkins — Halcyon. Cached
+  analysis, structure and stems were prepared for exactly these three. Structure
+  ran one GPU job at a time with retained stems. The unchanged energy model was
+  reproduced against the existing entries before adding their predictions.
+- V6 scoring now integrates beat-length energy, avoiding false bass holes between
+  kicks, and compares adjacent beats so level cliffs are not smoothed away.
+  Silence is excluded from harmonic overlap. Rating priors retain precision.
+  Shorter candidates win close scores before variety. The audition view now
+  shows warnings from the selected candidate instead of the last attempted one.
+- Validation: 315 medley tests passed after the scoring fixes; 28 selection and
+  integration tests passed after the tie-break fix; two audition-view regressions
+  passed. Real v5 audio was used for calibration. This is distinct from live
+  listening or full browser acceptance.
+
+V6: http://127.0.0.1:4300/?medley=20261003-104357
+Desktop: `/Users/dom/Desktop/Claude_Best_Medley_v6.mp3` (and matching `.cue`).
+It contains all 99 distinct songs and 99 chapters, lasts 77m08s, and took 76m31s
+including three planning rounds. Default mandatory transition checks: 29 pass,
+69 warnings, zero failures. No songs were excluded or left unprepared.
+
+The FINAL encoded MP3 continuity audit improved from v5's median 80.2 and 28/95
+joins below 60 to v6's median 89.9 and 12/98 below 60. Of 76 shared song pairs,
+51 improved, 21 worsened and four tied on this metric. These are continuity
+measurements, not a claim of universally improved musical taste.
+
+The whole-mix V13 check STILL FAILS: body downbeats 66.5% within 20 ms, below the
+95% threshold; landings 91.8% within 40 ms pass their 90% threshold. V5 had 17.3%
+and 32.6%, respectively. The failed evidence and all warnings are preserved.
+Do not describe this as fully beat-verified. The next useful review is the 12
+weak continuity joins and the remaining whole-mix body-alignment failure.
+
+Artifacts: `data/automix/builds/v6-20261003/` contains the MP3, cue, report,
+verification journal, both encoded-audio audits and audit script, scoring
+configuration, input hashes, HTTP verification and acquisition snapshot.
+Build log: `/tmp/spooty-medley-v6-build-20261003.log`. Audition server PID 99450
+serves 99 tracks; v6 is version 6 in `/api/medleys`. Its 99 songs, 98 transitions,
+selected warnings and a real 206/audio-mpeg/1024-byte MP3 range were checked.
+No active build remains. Prior mixes, ratings and manual sets were preserved.
+
+Final fresh physical catalog: 19,067/19,732 saved, 173.338447557 GB unique-inode
+MP3 storage in the saved active root `/Users/dom/Desktop/mp3_downloads`.
+No actionable acquisition work; 665 parked outcomes remain. Bulk ETA: none;
+v6 is delivered. No acquisition queue was resumed or failed searches reopened.
+At 10:50 the existing bridge reported disconnected/not connecting. Do not reuse
+the spent connection grant: any future reconnect needs fresh authorization.
+The previous broad website/browser/audio acceptance task below remains separate.
+
+## Latest — 17 September14:25 Bangkok: authorized connection attempted once
+
+The user explicitly granted the previously requested specific-session stop
+and one singleton reconnect. Live PID/start-time and cwd checks found the old
+Codex40383 already gone; no process was killed. No direct Codex Chrome tools or
+browser-enabled runtimes were present. Singleton14004 still owned17331 and was
+disconnected. The preflight passed six checks; plugin enumeration timed out.
+A separate bounded, filtered enumeration confirmed Chrome and Browser plugins
+disabled. No browser route was re-enabled or replacement proxy launched.
+
+Exactly one POST /connect went to the existing singleton at14:21:36 Bangkok.
+During the pending request OS inspection found exactly one Chrome client,
+PID14004. The HTTP request timed out without an established CDP connection.
+At14:24:32 health was disconnected/not connecting; at14:25:06 OS inspection
+confirmed zero Chrome clients, no stale parent, no direct tools or browser REPLs.
+No automated retry or permission click occurred. The user must be present to
+approve Chrome's prompt on a newly authorized single attempt. Do not reuse the
+17September grant for another POST. Never claim that a specific visible prompt
+was accepted, rejected or shown based only on the handshake timeout.
+
+All tool handles from this turn are terminal. The UX goal is still incomplete;
+its stored status remains blocked. This new user-resumed attempt made progress
+by verifying the old parent had exited and exercising the authorized connection.
+Do not carry the old three-turn blocked count into this fresh resumed attempt.
+Live browser/Spotify/layout/audio acceptance remains outstanding. No app code,
+Spotify library, queues, settings or media was changed. Fresh plan:
+19,056/19,729 saved,172.274658487GB; queues empty/unpaused, active0, no CLI owner,
+no active completion ETA. /tmp/spooty-permission-granted-plan.json.
+
+## Goal blocked — third consecutive impasse check, 15 September18:44:29 Bangkok
+
+Previous turn was no progress, not a live-job wait. Read-only revalidation again
+found singleton14004 disconnected/not connecting, with the recorded Codex40383
+and its original UTC start identity still alive. No new authority or external
+change enables the remaining live-browser acceptance. The three-consecutive-
+turn threshold is met; mark the goal blocked, NOT complete. No browser/other
+session/queue was restarted and no permissions were requested through Chrome.
+
+Resume only with authority to resolve that specific stale session and make one
+connection through the existing singleton, or a verified equivalent external
+state change. Real Spotify library/edit/removal sync, multi-tab/recovery,
+responsive/theme/keyboard and audible playback checks remain in WEBSITE_AUDIT.
+All non-browser test handles are terminal; do not wait on or restart old tests.
+Current media/queue state is unchanged:19,056/19,729 saved,172.274658487GB;
+empty/unpaused queues, no owner/preparation or active ETA. Fresh plan is
+/tmp/spooty-acceptance-blocked-plan.json.
+
+## Blocked audit — second consecutive impasse check, 15 September18:43:54 Bangkok
+
+Previous goal turn completed the non-browser acceptance audit and reached the
+first impasse. This continuation made no implementation progress: read-only
+revalidation found singleton14004 still disconnected/not connecting and the
+same Codex40383/start identity still alive. No browser permission, other-session
+stop or reconnect was authorized. The remaining real-browser acceptance gates
+are unchanged; do not rerun complete suites or create unrelated edits as busywork.
+Goal stays active at this second check. If the same impasse is revalidated on
+the next continuation with no meaningful safe action, mark the goal blocked.
+Queues remain empty/unpaused, active0, owner available, no preparation. Fresh
+plan:19,056/19,729 saved,172.274658487GB;19 actionable not queued, no active ETA.
+
+## Latest — 15 September, 18:43 Bangkok: non-browser acceptance audit complete
+
+Previous goal turn was progress: connection-state race/teardown fixes. This
+continuation completed the combined non-browser check and requirement audit.
+All1,033 tests pass without skips:429 backend/51 suites,212 acquisition,270
+rendered DOM/service,87 UX/process/style and35 CDP/source regressions. Both
+typechecks pass. Every launched test handle finished; no test process is being
+waited on. Logs /tmp/spooty-acceptance-{backend,acquire,dom,ux,cdp,be-typecheck,
+fe-typecheck}.log. No browser, Spotify or YouTube operation was performed.
+
+WEBSITE_AUDIT now maps the normative requirement groups to concrete evidence
+and missing live acceptance. Real4200 HTTP library/detail/media checks pass:
+841 playlists,23,289 checked occurrences, zero errors, same reused scan,
+matched detail and206/audio-mpeg/1024byte MP3 range. Zero verified membership
+baselines/presence observations; Chrome disconnected; sync idle with one error.
+These observations do not prove successful Spotify sync, layout or audio.
+
+No further evidenced implementation fix was found. The next substantive step
+is live browser/Spotify/multi-tab/layout/playback acceptance. The outstanding
+specific-session stop/reload and singleton reconnect have NOT been authorized.
+This is the first impasse check after the last implementation progress. Keep
+the goal active; on subsequent continuations revalidate the same access blocker,
+and use the strict three-consecutive-turn blocked audit instead of cosmetic
+busywork or repeatedly rerunning already-complete tests. Do not mark complete.
+
+Fresh plan /tmp/spooty-acceptance-plan.json:19,056/19,729 sources saved,
+172.274658487GB/18,537 inodes. Queues empty/unpaused, no owner/preparation,
+19 actionable sources not queued; no current output rate or completion ETA.
+
+## Latest — 15 September: Spotify connection-state races fixed
+
+Previous turn made progress by containing another confirmed CDP bypass; this
+goal continuation did not authorize stopping Codex40383 or connecting Chrome.
+Safe sync-flow review reproduced a separate UI race: old health replies could
+undo a newly acknowledged connection and offer reconnection incorrectly. Lost
+POST replies could reuse an old health observation, and closed components kept
+connection subscriptions/callbacks alive. Six new DOM regressions failed first.
+
+Superseded health reads are now disposed at connection start/completion; lost
+replies get a fresh read. Teardown disposes response subscriptions and guards
+handlers. Readiness changes retire old confirmations. No automatic connection,
+Spotify submission, download, singleton disconnect or other-agent change.
+270 DOM/service tests,32 sync-flow tests, FE spec typecheck/build pass. Current
+4200 main.js serves the cleanup. Logs /tmp/spooty-chrome-state-{red,dom,sync,
+typecheck,build}.log. This is not attribution/fix of the other parent's prompts.
+
+Finished documenting the preceding bootstrap work: no URL routes are used,
+so unused provideRouter was removed. App-root tests now run in the DOM runner
+with real appConfig and singular styleUrl support. Library/sync/activity remain
+immediate. Main JS537→462KB, total initial976KB;500KB warning remains. No lazy
+chunks or budget inflation. See WEBSITE_AUDIT/README for exact checkpoint data.
+
+Live acceptance remains incomplete:841 playlists/23,289 checked occurrences,
+zero file errors, but zero verified membership baselines/dated library-presence
+observations. Chrome is disconnected; sync idle with one prior error. Real
+authenticated sync/edits/removals, cross-tab/recovery, responsive/theme/keyboard
+layout and audible playback require authorized live verification. Tests cannot
+substitute for these gates. Latest fresh media/queue check from this incident:
+19,056/19,729 sources saved,172.274658487GB/18,537 inodes; empty/unpaused queues,
+no active CLI/preparation, no current throughput or ETA.19 actionable unqueued.
+
+## Latest — 15 September, 18:36 Bangkok: CDP recurrence contained, parent unresolved
+
+The latest user request is recurring Chrome CDP prompts, not authorization to
+connect Chrome or stop another project's agent. Exact live attribution again
+found direct Chrome tools85009/85052 and browser-enabled runtimes85006/85030
+under old Codex40383 (`/Users/dom/src/heimdall-mr`, UTC start14September05:46:17).
+Three tool processes received TERM after identity checks; worker85052 exited
+with its launcher. Parent, Chrome and singleton14004 were preserved.
+
+35 CDP regressions pass; live/config check is6pass/1fail because the recorded
+stale parent remains. Saved settings are correct but do not retrofit that live
+session. Singleton remains disconnected/not connecting. This is containment,
+not a permanent fix or attribution of an individual Chrome prompt. Permanent
+remediation still needs verified configuration reload or authorized session
+stop. See scripts/CDP.md; do not repeat "fixed forever" or erase the gate.
+
+No queue/media mutation. Fresh plan:19,056/19,729 source tracks saved,
+172.274658487GB across18,537 MP3 inodes. Both queues empty/unpaused, active0,
+no CLI owner or preparation. No current throughput/completion ETA.19 actionable
+sources remain unqueued; all parked outcomes remain parked.
+
+## Latest — 15 September: stylesheet payload and activity readability improved
+
+Previous goal turn was progress: navigation/sync visibility fixes. This turn
+followed the build-quality backlog without Chrome access or other-agent work.
+Global CSS uses supported Bulma modules while preserving reset/themes/icons and
+all relevant current/legacy helper rules. The full-framework comparison caught
+an omitted is-flex rule, now restored. Production CSS759.92→478.64KB; estimated
+transfer53.74→33.01KB. Retired sidebar/bottom-queue styles are removed and live
+activity controls colocated. Sass/component-style warnings are gone; the total
+initial1.05MB bundle warning remains and its500KB budget was not changed.
+
+Fixed actual fallback-row contrast: light hover surface, darker progress text,
+visible focus outline and panel-relative strong text for system dark mode.
+Six new style regressions cover cascade order, variables, obsolete selectors
+and declared contrast.259 DOM/service tests,87 UX/process/style tests, frontend
+typecheck and production build pass. See WEBSITE_AUDIT and
+/tmp/spooty-styles-{red,contrast-red,verified,ux,dom-final,typecheck,build-verified}.log.
+Baseline: /tmp/spooty-navigation-build-final.log. The real4200 bundle/CSS serves
+the changes;841 playlists/23,289 checked occurrences, zero scan errors.
+
+No Chrome connection/restart, Spotify submission, download or media change.
+Queues empty/unpaused, owner available, preparation idle;19,056/19,729 source
+tracks saved,172.274658487GB,19 actionable not queued, no current rate/ETA.
+Full UX goal active: live Spotify, cross-tab, responsive/theme/keyboard and
+audible playback acceptance remain unverified. No authorization to restart
+Codex40383 or reconnect the singleton was inferred. Remaining initial-bundle
+analysis must not hide or postpone the saved-library UI just to clear a warning.
+
+## Latest — 15 September, 18:16 Bangkok: sync visibility and navigation fixed
+
+The intervening CDP recheck made no UX progress and left the same unrelated
+stale-parent restart requirement unresolved. This continuation resumed the six
+failing navigation regressions rather than repeating browser diagnostics. It
+does not authorize Chrome access or stopping/restarting Codex40383.
+
+Whole-library sync remains outside the collapsed narrow-screen chooser. Tools,
+filters/list and empty text collapse together; the chooser has a bounded scroll
+pane. Up/Down from the filter reaches matching results; arrows/Home/End preview
+without closing or syncing, Enter opens/focuses the heading, Escape returns to
+the chooser control, and Space cannot select a hidden row. Post-render focus
+honors rapid changes/teardown; scrolling uses the clipped viewport.
+
+259 DOM/service tests,81 UX/process tests, frontend typecheck and production
+build pass;13 new navigation cases. Actual4200 serves the new bundle and841
+playlists/23,289 checked occurrences. See WEBSITE_AUDIT and the
+/tmp/spooty-navigation-{red,dom-verified,typecheck-final,ux,build-final}.log files.
+Existing build warnings remain. Real browser/layout/Spotify/multi-tab/audible
+playback acceptance remains pending; no Chrome or live metadata/media mutation.
+Queues empty/unpaused, no owner/preparation.19,056/19,729 sources saved,
+172.274658487GB;19 actionable not queued, no current download rate or ETA.
+Full goal active; safe follow-ups include stylesheet/build-quality cleanup.
+
+## Latest — 15 September: historical review/source identity compatibility fixed
+
+Previous goal turn was progress: retained-playlist explanations and durable
+library observations. This iteration addressed the remaining review-key audit,
+without browser access or restarting another agent. It is an evidence/pipeline
+fix, not a new dashboard warning panel or a new full-library duration audit.
+
+Four consumers still compared old artist/title review keys directly against new
+Spotify keys: source-inspection selection, historical audit snapshots, benchmark
+review reports and replacement bookkeeping. Shared SourceReviewIndex now uses
+explicit catalog/reference/audit Spotify IDs, retains historical keys/latest
+records, and refuses conflicting exact-source identity. New source callers do
+not inherit unbound name-only reviews. Group replacement evidence is separate;
+one replacement cannot clear the group's review or certify recording identity.
+Explicit inspection status reports mapped/unavailable sources, unbound reviews
+and ledger errors. Ordinary startup does not schedule historical inspection.
+
+Read-only real ledger audit:2,347 entries,328 unresolved historical entries;
+old new-source direct-key matching found0, explicit identity maps321 entries to
+321 current sources,7 remain unbound. These are not new failed MP3 findings.
+No live review/MP3/journal state was changed or inspection/repair work queued.
+
+Verified212 acquisition tests,429 backend/51 suites,246 rendered DOM/service
+tests, backend typecheck; two replacement tests first failed on the old lookup.
+Logs /tmp/spooty-review-identity-{red,acquire-final,backend,dom,typecheck}.log.
+Live4200 returns841 playlists and23,289 checked occurrences with zero errors.
+Offline plan unchanged:19,056/19,729 saved,172.274658487GB/18,537 MP3 inodes;
+19 actionable not queued,65 missing,564 candidate-exhausted,25 exhausted errors.
+Both queues empty/unpaused, no preparation/owner; no current rate or ETA.
+Full UX goal remains active. Live Chrome/Spotify edits, multi-tab, responsive
+layout and audible playback still require authorized browser verification.
+
+## Latest — 15 September: explain playlists retained after library sync
+
+The preceding turn made progress by confirming/containing another stale Codex
+browser-tool recurrence. This continuation returned to safe UX implementation;
+it did not authorize restarting Codex40383 or connecting Chrome.
+
+Focused playlists now show a neutral Kept locally note with the last complete
+library-check date when Spotify did not return them. A later complete discovery
+can remove that note. Failed/partial discoveries, focused sync and saved-playlist
+bulk sync preserve the prior observation. A successful empty-library receipt
+explains that saved playlists and MP3s were kept. No deletion or implicit download.
+
+The private sync-state file stores the validated complete ID observation across
+restarts. API playlist responses project presence at read time; no unchanged
+dump rewrites, audio rescans or extra ID lists in sync-status polling. The
+existing app notification refreshes open dashboards. Missing legacy evidence
+stays unknown, never inferred absent. Failed durable writes do not publish it.
+
+Verified429 backend tests/51 suites,246 rendered DOM/service tests,81 UX/process
+tests, both typechecks and frontend production build. New red-before-fix tests
+cover absent/present/unknown states, invalid dates, preservation and restart.
+A real isolated Nest HTTP/socket fixture uses the real discovery collector with
+a complete empty response, verifies the notification, same scan, preserved
+metadata/MP3 inode and no download/Chrome mutation. This is not Chrome/Spotify
+integration or audible playback acceptance. Existing Sass/bundle warnings remain.
+Logs: /tmp/spooty-library-presence-{backend-final,dom,ux,build,fe-typecheck,
+be-typecheck,http,sync}.log; offline counts in the matching plan.json.
+
+Live4200 serves the new note/receipt text; API view returns841 playlists and a
+complete23,289-occurrence scan, zero errors. None has a complete library-presence
+observation yet; no real Spotify check or invented baseline was used. Backend
+38503/3000 and frontend97682/4200 serve normally. Both queues empty/unpaused,
+no preparation or CLI owner.19,056/19,729 source tracks saved:18,760 duration-
+matched,296 unverified;172.274658487GB/18,537 MP3 inodes.19 actionable sources are
+not queued;65 missing,564 candidate-exhausted,25 exhausted errors stay parked.
+No current output rate or completion ETA. Full UX goal remains active: live
+Chrome/Spotify, responsive, multi-tab and audible playback acceptance are still
+required. Continue safe remaining work; do not infer Chrome/restart permission.
+
+## Latest — 15 September: clearer playlist header and truthful sync freshness
+
+The previous goal turn made progress by reproducing/fixing the Redis-recovery
+shutdown wait. This turn returned to user-facing Spotify/playlist clarity.
+No Chrome connection, other-agent restart, sync submission or download was made.
+
+Removed the duplicate completion title badges and obsolete already-hidden
+completion banners/styles. The single saved-progress summary retains counts,
+completion and review/queue reasons; it never claims local copies were newly
+downloaded. Header timestamps now say Saved locally for legacy/unverified lists,
+Checked with Spotify only for complete membership evidence. Invalid/missing
+dates are handled without Angular DatePipe throwing. Owner tooltip acknowledges
+saved metadata, the Spotify link says Open in Spotify, and selected downloads
+state playlist units. Chrome-approval help no longer claims sync is running.
+
+Six new rendered regressions failed before implementation. All241 DOM/service
+tests and30 sync-flow tests pass, with frontend typecheck and production build.
+Existing Sass and initial/component size-budget warnings remain. The actual4200
+main.js contains the new labels and no old Tracks synced/All tracks downloaded
+claims. HTTP view has841 playlists/23,289 checked occurrences, zero check errors.
+All841 current saved lists lack the new complete-membership baseline; no valid
+baseline or timestamp was invented. There are no invalid dates in current data;
+that crash case is covered by a fixture. Browser layout/audio acceptance is NOT
+claimed. Logs `/tmp/spooty-header-{red,dom-final,sync-final,typecheck-final,
+build-final,plan}.log`.
+
+Read-only plan unchanged:19,056/19,729 source tracks saved,172.274658487GB across
+18,537 MP3 inodes.19 actionable tracks are not queued;65 missing,564 no-candidate,
+25 exhausted errors stay parked. Queues empty/unpaused, ownership available;
+no current download throughput or ETA. Full UX goal remains active, including
+real-browser Spotify sync/membership edits/removals, cross-tab, responsive and
+audible-playback acceptance. Do not reconnect Chrome or restart heimdall-mr
+Codex40383 from a goal continuation. Other safe follow-ups remain in WEBSITE_AUDIT.
+
+## Latest — 15 September: reproduced Redis-recovery shutdown hang fixed
+
+The preceding user turn rechecked the CDP incident, not website implementation.
+This goal continuation resumed safe local work; it did NOT authorize restarting
+the other Codex session or reconnecting Chrome. Those boundaries remain unchanged.
+
+Reproduced the shutdown hang three times in an isolated real Nest/Redis fixture.
+After Redis recovered, Bull's blocking client could be reconnecting again while
+its main client still reported ready. Disconnecting the already-closed blocking
+socket cancelled reconnection but did not settle its outstanding marker wait;
+Bull's graceful close then waited indefinitely. The trace continued with idle
+handlers, live worker loops and a stranded blocking command. This matches the
+historical stuck shutdown phase; it does not prove every past hang had this cause.
+
+AppModule now enables installed ioredis5.9.2's native blockingTimeout protection:
+10s offline/indefinite fallback, finite command timeout plus500ms. No general
+commandTimeout, job execution deadline, forced-active close or queue mutation
+was added. Existing offline-idle cleanup remains unchanged. Read-only shutdown
+diagnostics record only flags/counts and bounded owner-local files beside DB_PATH.
+
+Verification:418 backend/51 suites,201 acquisition,235 rendered DOM/service,
+77 UX/process tests pass; backend typecheck passes. Recovery cases cover empty
+queues, preserved paused/delayed jobs and an in-flight handler held eleven seconds
+after shutdown begins, beyond the10s fallback, then completed and committed.
+Completed-batch idle shutdown, proxy/websocket/partial HTTP and durable request
+receipts also pass. See `/tmp/spooty-shutdown-{backend-full,acquire,dom,ux-full,
+recovery-fixed,typecheck,plan}.log`; pre-fix reproduction logs use the same prefix.
+
+The existing watch reloaded normally from11517 to55072;3000/4200 APIs respond200.
+The real saved library has841 playlists and a complete23,289-occurrence scan.
+A local MP3 byte-range read returned206,1024bytes,audio/mpeg. These are HTTP and
+isolated runtime checks, NOT real Chrome/Spotify/layout/audible-playback acceptance.
+
+Read-only physical plan:19,056/19,729 source IDs saved (18,760 duration-matched,
+296 unverified),172.274658487GB/18,537 MP3 inodes.19 actionable sources are NOT
+queued;65 missing,564 candidate-exhausted,25 exhausted errors stay parked.
+Queues empty/unpaused, ownership available; no current output rate or completion
+ETA. No user MP3, metadata, queued job or pace setting was changed.
+
+Full UX goal remains active. Next gaps: legacy quality-review source-key
+compatibility, responsive/build-warning cleanup, and the outstanding real-browser,
+Spotify membership/edit/removal, multi-tab and audible-playback acceptance.
+
+## Latest — 15 September: incremental saved-file coverage verified; UX goal remains active
+
+The previous goal turn was progress: recurring Chrome tools were contained and
+the false-clean stale-parent preflight was fixed. This continuation returned to
+local UX work, without further Chrome/proxy/process diagnostics. Codex40383 in
+heimdall-mr still requires authorized restart/reload; do not treat the goal
+continuation as that approval or request a Chrome connection.
+
+Finished the prior incremental-file-watching WIP. Shared LocalMediaIndex updates
+affected paths/aliases/hardlinks; LibraryCoverageScan creates targeted generations
+while retaining other verified rows. File/source/workflow changes notify open
+dashboards over the existing app socket. Quiet reads reuse the index; explicit
+recheck uses `?refresh=1`. Workflow updates do not probe audio again. Stale
+Completed rows can no longer invent saved counts or Play buttons. Current
+activity has one targeted-check indicator and a truthful manual fallback when
+watching fails or the watched directory inode is replaced. Watchers, callbacks
+and pending scan preparation are guarded on disposal. User media was not changed.
+
+Verified414 backend/50 suites,201 acquisition,235 DOM/service,73 UX/process,
+35 simulated CDP/source tests; both typechecks and frontend production build
+pass. Existing Sass/bundle warnings remain. Real isolated native file events
+were tested through Nest gateway, Socket.IO and HTTP, including addition,
+deletion and actual filenames. This is not real Chrome/layout/audio acceptance.
+Logs `/tmp/spooty-incremental-{backend-final,acquire,dom,ux,cdp,fe-build,plan}.log`.
+
+Live coverage reused the same complete23,289-track scan on four reads of9–13ms,
+with zero idle socket events over15s.4200 proxy APIs return200.841 playlists,
+20,231 occurrences local and22,514 locally available. Physical source plan:
+19,056/19,729 saved (18,760 duration-matched,296 unverified),172.274658487GB and
+18,537 MP3 inodes;19 actionable sources are NOT queued;65 missing,564 candidate
+exhausted,25 exhausted operational errors remain parked. Both web queues are
+empty/unpaused and ownership available. No current output rate or completion
+ETA. Do not quote the plan's hypothetical3/min ETA as actual running progress.
+
+Recovery: existing Nest watch hit the known intermittent healthy-Redis shutdown
+hang, leaving PID50253 non-serving with zero jobs in either queue. After exact
+identity/empty-queue rechecks only that stalled child received KILL; parent45891
+restored service83097. Subsequent source reload completed normally to86423,
+verified on3000/4200. The hang is NOT fixed; preserve active work if it recurs.
+
+Remaining work: real-browser/Spotify/multi-tab/playback acceptance, trusted real
+membership baselines, legacy review-ledger source-key compatibility, the healthy-
+Redis shutdown root cause, and responsive/build-warning cleanup. Continue safe
+local work; leave the full goal active. See WEBSITE_AUDIT for detailed evidence.
+
+## Latest — 15 September, 17:10 Bangkok: recurring Chrome tools contained, stale parent remains
+
+Newest user request is repeated Chrome CDP prompts; pause unrelated UX work.
+During this check the same stale Codex40383 (heimdall-mr; started14September
+12:46:17 Bangkok) launched auto-connect Chrome20746/20876 and browser-enabled
+REPLs20741/20851. Exact ownership was checked; only those four tool processes
+received TERM. The parent, Chrome, proxy and downloads were preserved.
+No real browser connection was requested. Parent restart/reload remains open
+and requires authority to interrupt that other session.
+
+Added a durable private stale-parent incident record plus a seventh preflight
+check matching PID and UTC start time, so a between-launch clean child snapshot
+cannot again be called fixed. This is diagnostic only, not process enforcement.
+All35 simulated/source regressions passed. Saved settings passed; live check
+correctly failed for the newly recurring tools and the known stale parent.
+See scripts/CDP.md. Do not clear the incident just to make tests green.
+
+Unfinished incremental library-file watching from the interrupted UX work is
+still WIP in the dirty tree. Do not call it complete: initial backend tests
+passed, but its DOM suite had one explicit-refresh expectation failure and new
+incremental/watch coverage still needs completion. Preserve those changes.
+
+## Latest — 15 September, 16:57 Bangkok: safe publication and actual filename completion
+
+Previous goal turn made containment progress: an older heimdall-mr Codex40383
+relaunched forbidden auto-connect/browser tools; only its tool children were
+terminated. That parent still needs authorized restart/reload. Do not repeat
+browser diagnostics or request CDP to continue local UX work. See scripts/CDP.md
+and global AGENTS; the last user has not authorized restarting that other agent.
+
+This turn fixed a demonstrated shared publication correctness defect. Three
+new regressions failed before implementation because occupied unrelated files
+were silently accepted as saved. Shared `materializeForTrack` and
+`publishMp3ForTrack` now recover at source-specific versioned filenames and
+return actual paths. Strict legacy helpers throw on unrelated occupied files.
+CLI uses returned paths; web worker/checkpoint/library preparation persist the
+actual audioFilename. The download adapter duration-checks late existing files
+before fast-skipping. Different legitimate encodings keep verified reuse; source
+replacement, symlink/empty/directory occupants and temp-file ownership are guarded.
+Cross-device copies stage privately before final link. No deletion or rename of
+existing media; no extra network search needed for a destination collision.
+
+399 backend/49 suites,199 acquisition,222 rendered DOM and73 UX/process tests
+pass; both typechecks pass. Tests include real temporary MP3 ffprobe/tagging,
+fresh CLI catalogs after collision, actual library playback path resolution,
+worker persistence and batch per-destination results. Logs:
+`/tmp/spooty-publication-{backend,acquire,dom,ux,cdp}.log`.
+No actual browser/Spotify/YouTube interaction or production MP3 write was used.
+Do not call DOM/HTTP assertions real browser or audible playback acceptance.
+
+Read-only localhost4200 view:841 playlists in1.003s,23,289 checks finished in
+6.241s with zero errors. Backend watch serves PID90645; no manual queue/process
+restart. Queues unpaused/idle, owner available, no preparation, limits4/1/240.
+Plan:19,056/19,729 source keys saved,18,760 duration-matched and296 unverified;
+172.274658487GB across18,537 MP3 inodes.19 actionable items are not queued;
+65 missing+564 candidate-exhausted+25 errors remain parked. No active rate/ETA.
+
+Full UX goal stays active. Next safe work: event-driven coverage invalidation
+or legacy explicit-review key compatibility. Healthy-Redis shutdown root cause,
+real membership baseline and browser sync/playback/narrow-layout acceptance stay
+open. Source-duration agreement is not exact recording proof. Source handoff
+fingerprints tolerate ctime changes from our own hardlinks; this is not a defense
+against deliberate timestamp manipulation. Filesystems without atomic link
+publication fail closed, and were not live-tested this turn.
+
+## Latest — 15 September, 16:41 Bangkok: browsable library during local file checks
+
+The previous turn made authoritative source-identity progress. This turn fixed
+the next local-first UX defect: cold ffprobe checks no longer hold the entire
+playlist list off screen. `LibraryCoverageScan` owns one bounded four-record
+background pass, exposes snapshots and prioritizes the focused playlist. The
+shared `LocalMediaIndex` remains authoritative for file/length checks; old and
+incremental detail projections share `viewTrack`, not separate matching policy.
+
+New UI routes: GET `/api/library/view` begins/coalesces a check; the same route
+with `?scan=ID` only observes it. GET `/api/library/view/detail/:id?scan=ID`
+returns current track evidence and prioritizes the playlist. Old GET `/library`
+still awaits complete evidence for non-UI consumers. Scan IDs are invalidated
+by backend, download-root or saved-membership changes. Changed/malformed replies
+cannot silently count unchecked media as complete. No download mutation repeats.
+
+The UI renders playlist metadata immediately, then one Current activity progress
+indicator. Unchecked tracks say Checking local file (Not checked on failed/lost
+observation), never Pending/Missing/complete. Confirmed counts are explicitly
+partial. Whole-library admission waits for the check; a fully checked focused
+playlist remains eligible while others finish. Polls use the same ID, stop on
+completion/disposal, and preserve the list on connection loss. Explicit local
+recheck, stale-detail clearing, root/generation guards and concurrent-work
+priority are tested. Chrome is never involved in these checks.
+
+Real4200 HTTP:841 playlists returned in987ms; focused LTJ Bukem's EARTH Series
+returned78 rows in123ms while checking;23,289 occurrences completed in5.307s on
+the warm cache. Progress reads7–139ms; final20,231 onDisk/22,514 available
+occurrences, zero unchecked playlists. Controlled cold-probe test uses the real
+Nest HTTP routes and returns before the held probe completes (1.5s deadline).
+New view also passes the23 known mismatch regression entries in18 playlists.
+These are HTTP/DOM checks, not Chrome/layout/audible-playback acceptance.
+
+382 backend tests/48 suites,222 Angular DOM,73 UX,197 acquisition and30 simulated
+CDP tests pass. Backend/frontend typechecks and frontend build pass; existing
+Sass/bundle/style warnings remain. Logs `/tmp/spooty-coverage-{backend,dom,ux,
+acquire,cdp,build}.log`. Live backend51258 is serving; no manual backend/queue
+restart was needed this turn. Concurrent view reads also coalesce across a
+download-root change during initial preparation (regression included). Watch
+reloads occurred normally. No media or queue
+mutation, Spotify sync or Chrome connection was requested.
+
+Physical plan unchanged:19,056/19,729 Spotify source IDs have files (18,760
+duration-matched,296 unverified);18,537 unique MP3 inodes,172.274658487GB.
+19 actionable sources are NOT queued;65 missing,564 no-candidate,25 errors
+remain parked. Web queues idle/unpaused, owner available, no preparation, no
+active throughput or completion ETA. CDP remains deliberately disconnected.
+
+Next substantial gaps: event-driven filesystem/database index invalidation
+(this pass makes scan observations incremental, not all underlying indexing),
+publication/copy races, legacy explicit review-key compatibility, healthy-Redis
+shutdown hang, and real-browser/Spotify acceptance when explicitly authorized.
+Full UX goal remains active. Do not resume downloads or reconnect Chrome merely
+to exercise the next change. Do not mistake a completed scan for a continuously
+fresh filesystem snapshot; playback still independently resolves the file.
+
+## Latest — 15 September, 16:24 Bangkok: shared identity repair implemented; Chrome stays disconnected
+
+CLI, web acquisition, library coverage and HTTP playback now use Spotify source
+identity separately from filename aliases. Shared `source-id.ts`, `identity.ts`
+and `local-media.ts` retain every local candidate and compare exact-source
+duration with fingerprint-cached ffprobe evidence. Wrong occupied destinations
+are preserved; new versions receive source-ID filenames. Same-source playlist
+occurrences remain visible and deduplicate acquisition. Legacy terminal outcomes
+stay parked, but cached URLs/live errors cannot cross known Spotify identities.
+Unknown historical source duration remains explicitly unverified and cannot
+authorize cross-playlist copying. Read scripts/acquire/README.md for semantics.
+
+The old audit's23 false coverage entries in18 playlists were rechecked through
+the real4200 API: all23 now onDisk=false,available=false,mediaVerification=mismatch.
+Frontend labels them Needs matching version; stale Completed websocket rows
+cannot restore their Play button/saved count. No media deletions, moves, copies,
+YouTube/Spotify/Chrome requests or queue admissions were made by this repair.
+The private derived cache is `data/media-duration-cache` (ignored by Git).
+
+New plan denominator is19,729 Spotify source IDs, NOT18,977 filename keys or
+distinct recordings:19,056 have local media, comprising18,760 duration-matched
+and296 unverified sources.65 missing,564 no-candidate,25 exhausted errors,
+19 actionable (14 cached URLs +5 pending), not queued.18,537 physical MP3 inodes,
+172.274658487GB unchanged. No active rate or completion ETA. The plan's baseline
+projection is hypothetical, not a running download estimate.
+
+Verification: backend371/47 suites, acquisition197, UX73, Angular DOM213,
+CDP30, local Codex configuration/runtime6 passed. Backend typecheck and frontend
+production build passed (existing Sass/style/bundle warnings). Logs are
+`/tmp/spooty-source-identity-{backend,acquire,ux,dom,build,cdp,resume}.log`.
+New identity cases use real ffmpeg/ffprobe and isolated SQLite/media fixtures.
+DOM/HTTP checks are NOT real-browser or audible-playback acceptance.
+
+Live backend reload exposed the unresolved healthy-Redis shutdown hang: old
+PID15237 stopped serving3000 and waited >800 seconds with both workers closing,
+handlers idle, main loops running; Redis clients were idle ordinary commands,
+not blocked list reads. Both queues had0 wait/active/paused/delayed jobs. Only
+that exact non-serving child was killed after rechecking queue/process ownership;
+Nest parent45891 restarted backend67348.3000/4200 settings API restored, nullable
+audioFilename column verified. Recovery is NOT a root-cause fix for shutdown.
+
+Repeated CDP complaint rechecked without browser tools: singleton14004 remains
+disconnected/not connecting, Chrome1337 listens64165 with no client. All6 saved
+and live Codex checks pass. Passive watcher89653 finished normally at16:20:41
+Bangkok:12,826 samples,0 client samples. It is NOT still running; none duplicated.
+This does not attribute the user's latest prompts or prove none remain. Never
+reconnect or invoke stale browser tools; future-session controls remain in place.
+
+Remaining: cold media-cache population took120 seconds for the raw library;
+make coverage incremental/nonblocking. Inspect publication races, legacy explicit
+review-ledger key compatibility, and the healthy-Redis shutdown hang. Duration
+does not prove exact performance identity. Real-browser Spotify/library/download/
+playback acceptance remains open while CDP is disconnected. Full UX goal active.
+
+## Latest — 15 September, 15:54 Bangkok: real identity audit proves incorrect coverage
+
+This goal turn made evidence/tooling progress, not the shared-identity repair.
+Read scripts/ux/track-identity-audit.mjs and the top WEBSITE_AUDIT section.
+Owner-only Git-ignored report: data/acquire/track-identity-audit-20260915.json.
+841 playlists,23,289 occurrences,18,977 legacy filename keys,19,729 Spotify IDs.
+637 filename groups have multiple IDs;378 have >=2 validated cached durations;
+16 groups have disjoint shared-policy duration windows, covering56 occurrences.
+Different IDs alone do not establish different recordings; unknowns stay unknown.
+
+19 unique physical MP3 inodes probed. Among those56 entries:16 local match,
+7 local mismatch,13 compatible elsewhere,16 incompatible elsewhere,4 no file.
+Live GET detail comparison covered23 suspect entries in18 playlists, all rows
+matched: API falsely reports all7 mismatches onDisk and all16 incompatible
+alternatives available. No Chrome/Spotify/YouTube request or queue/media write.
+The seven wrong local destinations are in:2024; Stick-Up Radio; Jeff Beck -
+Star Cycle(two); Faithless - Insomnia - The Best Of; LTJ Bukem Presents Earth
+1-7; Shook. The JSON has exact source IDs, expected/actual durations and paths.
+Do NOT delete them wholesale: the same recording may be valid for another ID.
+This is a targeted ambiguity audit, not a full-library bad-audio count.
+Scope recheck: optional Desktop/2024 scan root is absent, no relevant MP3
+symlinks were omitted, and all16 incompatible alternatives have API onDisk=false
+(not another local format/path). Final test:ux rerun passed73/73.
+
+Audit reuses shared normalization, metadata validation and duration policy;
+retains multiple file candidates; skips staging; probes hardlinks once.6 new
+tests cover false positives/unknowns, same-playlist variants, reuse, staging,
+hardlinks and file preservation. test:ux passed73; latest six audit tests and
+help command passed.6 Codex runtime/config checks pass. Diff check passes.
+Logs: /tmp/spooty-track-identity-{ux,unit,cdp-config}.log. One report read raced
+generation and failed before any API request; rerun after completion succeeded.
+
+Next MUST implement shared source-identity/coverage repair, not more audit-only
+turns or cosmetic labels. Code evidence:
+- LibraryService.indexAudioFiles stores one path per basename; jobByKey merges
+  different source IDs and prefers Completed; list/detail trust file existence.
+- downloadPlaylists matches prior rows/destinations by file key and does not
+  verify alreadyHere audio; copy verification only runs for !alreadyHere.
+- CLI catalog groups spotifyIds and destinations by songKey; cached duration
+  resolution can choose the first ID. Same-name different versions in one
+  playlist cannot both have distinct destinations under this scheme.
+- Frontend trackKey uses artist/name; LibraryTrack omits Spotify identity, though
+  live Track already has spotifyUrl. Thus live state can cross source IDs too.
+
+Use stable Spotify source keys separate from legacy file aliases, explicit
+occurrence projection, source-specific job/outcome lookup, and multiple media
+candidates with cached fingerprinted duration evidence. Reuse the same core
+in web/CLI; no manual audit in the happy path. Keep old files and legitimate
+reuse; migrate/default-skip old journals deliberately, never reopen accepted
+parked outcomes or mass re-download as a side effect. Existing spotifyUrl on
+TrackEntity may support the first identity change without a schema migration.
+Do not substitute a blocking-only safeguard for a working version-aware flow.
+
+Live queues idle/unpaused, owner available, no preparation. Legacy plan remains
+18,333/18,977 file-key matches,172.274658487GB,644 parked/no active ETA; explicitly
+qualify these as old name-key counts, not proof of recording coverage. Backend
+15237 unchanged. CDP14004 disconnected; watcher89653 remains bounded until16:20,
+9879 samples/0 clients through15:53:04. Do not duplicate/reconnect or invoke stale
+browser runtimes. Full UX goal active; browser/Spotify acceptance remains open.
+
+## Latest — 15 September, 15:42 Bangkok: advanced limits action finished
+
+The old retained-profile button is now **Restore tested download limits**,
+accurately describing concurrency/admission changes only. Eligibility, visible
+help and handler agree with paused/drained queues, owner, preparation, cooldown
+and safety-floor constraints. Paused backlogs remain eligible; selected limits
+are text, not a disabled status button. Current activity reports progress,
+rejection and acknowledgement.20-second timeout, invalid/empty-reply handling,
+fresh read-only reconciliation and disposal cleanup are tested. No automatic
+POST replay. Old status replies cannot overwrite acknowledged values or newer
+user-action receipts. Pace-only POST results preserve queue/owner telemetry.
+
+210 rendered Angular DOM tests (29 new),67 UX/real-process tests,12 targeted
+backend ownership/preset tests,6 live Codex configuration/runtime checks pass.
+Frontend typecheck/build and diff check pass; existing Sass/bundle/style budget
+warnings remain. Logs: /tmp/spooty-download-limits-{dom,ux,backend,build}.log.
+No backend code/settings change, queue mutation, MP3 action or Chrome request.
+Live4200 library200/841 and pace200:4/1/240 unchanged, idle/unpaused queues,
+owner available, no preparation. Backend15237 and singleton14004 unchanged.
+Existing watcher89653 had8600 samples/0 client samples through15:41:01; it
+remains bounded until~16:20. Do not duplicate it or reopen old browser runtimes.
+
+Physical plan:18,333/18,977 saved,172.274658487GB,644 parked, zero actionable
+songs/no active completion ETA. Browser/Spotify/playback acceptance remains
+unverified; the full UX goal is active, not complete or blocked.
+
+Next substantial safe work: inspect/reproduce the normative stable-track-
+identity gap before migration. LibraryService indexes physical files by lower-
+cased basename (indexAudioFiles) and merges jobs/dump tracks through
+UtilsService.trackFileKey(artist,name). Distinct Spotify IDs/recordings and
+playlist occurrences need explicit treatment; do a read-only real-catalog
+collision audit plus isolated regression before changing identity/storage.
+Preserve valid cross-playlist reuse, existing MP3s, parked outcomes and jobs;
+do not silently relabel/re-download the whole catalog. Incremental coverage,
+legacy membership baselines, the unproven healthy-Redis shutdown hang and live
+browser usability checks also remain, as documented in the canonical contract.
+
+## Latest — 15 September, 15:33 Bangkok: stale browser runtimes removed
+
+User again reported CDP permission prompts; this takes priority over the next
+advanced-profile UX task (not implemented). Saved settings and direct-MCP
+checks passed but16 old generic/unified Codex REPLs still loaded a trusted
+browser service. Exact identities were checked, then only those tool runtimes
+were terminated; their child workers also exited. Parent agents33663/40383/
+69403, Chrome1337, singleton14004, backend15237 and watcher89653 remain alive.
+No browser requests, approvals, queue/media changes or backend restart.
+This removes a confirmed bypass risk, not proof of the source of every prompt.
+
+Added live REPL-environment inspection to test:cdp-config (now6 checks), plus
+5 privacy/ownership/failure regressions (test:cdp now30). Both pass; diff check
+passes. Global/repo instructions and scripts/CDP.md record the expanded
+preflight. Do not print process environments or relaunch stale browser tools.
+Singleton remains disconnected/not connecting. Existing passive watch remains
+bounded until~16:20 Bangkok; no duplicate. Native app control remains configured
+for fresh sessions; closing old tool runtimes cleared their in-memory state.
+
+Read-only physical plan remains18,333/18,977 saved,172.274658487GB,644 parked,
+zero actionable songs/no completion ETA. UX goal remains active and unchanged;
+resume the advanced-profile action task below without applying live settings.
+
+## Latest — 15 September, 15:27 Bangkok: focused action gates and shutdown evidence
+
+Fixed enabled-looking focused buttons whose handlers rejected preparation.
+All three focused acquisition controls now use one blocked-reason rule for
+disabled state, handler, tooltip and visible/accessibility help. Restored
+preparation also gets correct folder guidance. Eight DOM cases prove blocked
+states and automatic re-enabling; existing paused/queued retry cases still pass.
+
+Healthy-Redis shutdown hang NOT reproduced/fixed: three new isolated cases
+cover dev-proxy polling/upgrades, aborted observations and partial HTTP bodies.
+Added observational shutdown trace (fixed resource names/booleans only): starts
+before application shutdown, reports waits after5s then every30s, never kills
+work or contacts Redis/Chrome, stops at the application shutdown hook. Unit
+tests and the real held-job test verify privacy/cleanup and that it stays live
+during Bull drain. If the hang recurs, inspect these narrow phase messages;
+do not dump old CDP logs or force-restart a live queue.
+
+366 backend/47 suites,181 DOM,67 UX/process,25 CDP and5 local config checks pass;
+both typechecks/frontend build pass with existing warnings. No acquisition
+implementation change (186 acquisition tests passed previous iteration).
+Backend15237 after normal source-watch reload, no manual signals. Library841
+and pace return200; idle/unpaused, owner available, no preparation. Downloads
+remain18,333/18,977,172.274658487GB,644 parked/no actionable completion ETA.
+Chrome singleton14004 remains disconnected, existing bounded watcher89653
+still owns the passive trace through~16:20 Bangkok. Do not duplicate/reconnect.
+
+Next safe UX work: advanced retained-profile control currently omits the
+backend's paused/drained gate and writes results only to the old message field.
+Align button eligibility and clear Current activity feedback/observation without
+applying the profile to the live installation, resuming jobs or bypassing safety.
+Full browser/Spotify/playback and broader identity/coverage work remain open;
+keep the original goal active, not complete or blocked.
+
+## Latest — 15 September, 15:18 Bangkok: durable download receipt recovery verified
+
+Finished the receipt WIP noted below. Optional UUID header, saved admission
+and exact completed counts now survive backend restart; same-ID reuse never
+replays preparation. GET status distinguishes preparing/completed/interrupted/
+failed without invented partial counts. Frontend session marker and read-only
+Check submission recover lost replies/reloads. Quiet sync preserves recent
+receipts, and nested recovery refreshes no longer leave Loading stuck. Explicit
+new requests preserve unrelated selections/errors; old replies cannot replace
+new results. See README/WEBSITE_AUDIT for contract and boundaries.
+
+Four real isolated HTTP/SQLite/Redis restart cases pass, including retained
+partial queue work on interruption/failure and changed-library old-ID safety.
+Full suite:363 backend/46 suites,173 Angular DOM,64 UX/process,186 acquisition,
+25 CDP and5 local config/runtime checks pass; both typechecks and frontend
+build pass (existing warnings). No live Chrome/Spotify calls, media/queue
+mutations or manual backend signals. Watch reloaded normally to93795. Through
+4200: library841/detail78 HTTP200, audio206/1024bytes, unknown receipt404;
+queues idle/unpaused, owner available, no preparation running.
+18,333/18,977 saved,172.274658487GB,644 parked; no actionable download ETA.
+
+Goal remains active. Next safe high-impact work includes reproducing the
+separately observed healthy-Redis shutdown hang (not fixed by the idle-outage
+repair), then remaining identity/coverage/UX acceptance work. Browser layout,
+real playback and live Spotify acceptance remain unverified; never reconnect
+Chrome or launch an alternate browser. Singleton14004 stays disconnected.
+Existing watcher89653 remains bounded until~16:20 Bangkok;6023 samples/no client
+samples through15:16:55. Do not duplicate it or equate samples with no prompt.
+
+## Latest — 15 September, 15:11 Bangkok: repeated CDP prompt recheck
+
+The latest reported prompt is not attributed; do not claim permanent resolution.
+Singleton14004 remains disconnected/not connecting; Chrome1337 still listens
+on64165. Existing passive watcher89653 recorded5268 samples with zero clients
+through15:09:53 Bangkok. No browser request, reconnect, permission approval,
+proxy restart or duplicate watcher. Other agents' non-auto-connect Chrome MCPs
+were not blamed or terminated.
+
+Fixed a coverage gap in the live process check: direct Chrome MCP entry points
+may appear only as Node executables. It now checks Node script arguments
+privately, preserves Codex ancestry checks, rejects diagnostic-text false
+positives and emits identities only.25 CDP regressions and5 live/config checks
+pass; no current Codex-owned direct connector found. Global/repo rules now
+require this preflight before browser work in future sessions. See scripts/CDP.md.
+
+Read-only health checks also found backend49565 hung since14:59:27 during
+shutdown despite healthy Redis. Logs said both handlers idle; Redis confirmed
+zero active/waiting/delayed jobs and process inspection found no children.
+Only this verified idle child was killed; Nest watch45891 remained and started
+78620. Through4200, library841/HTTP200 and pace/HTTP200 recovered; both queues
+idle/unpaused, owner available, no admission running. No queue/media mutations.
+This is another shutdown path, not fixed by the earlier Redis-outage repair;
+reproduce it safely in isolation before claiming general watch recovery.
+18,333/18,977 saved,172.274658487GB,644 parked; no actionable download ETA.
+
+The interrupted durable-download-receipt work is still WIP: new store, header,
+status endpoint and frontend session marker are implemented; focused backend
+52 tests/typecheck pass. Latest DOM run166 pass/1 fail: recovered-completed
+submission on reload loses its visible receipt during initial library refresh.
+Fix and verify before reporting completion; full backend/HTTP restart integration
+coverage and docs for receipts remain outstanding. Preserve this work. The
+ongoing UX goal remains active; Chrome QA must not bypass the disconnected bridge.
+
+## Latest — 15 September, 14:56 Bangkok: idle Redis-outage shutdown fixed
+
+Real isolated Nest tests reproduced shutdown hanging in BullExplorer after
+HTTP disposal when Redis was offline. A new pre-shutdown service closes only
+idle local workers/producer clients on that path. It observes actual handler
+execution, rechecks races after local pause, and leaves active work/healthy
+Redis on normal graceful shutdown. Durable queue pause flags, waiting/delayed
+jobs, CLI ownership and media are untouched. See WEBSITE_AUDIT for limits;
+this is not proof every older watch hang had that same cause.
+
+10 process/socket lifecycle cases and6 unit cases added. Full verification:
+351 backend/45 suites,60 UX/lifecycle,157 DOM,186 acquisition,21 CDP and5 local
+CDP configuration/runtime checks pass; backend typecheck passes. Read-only
+localhost through4200: library/detail200, range audio206/1024bytes. Nest watch
+reloaded normally, no manual kill; latest backend49565. Queues idle/unpaused,
+no CLI owner.18,333/18,977 saved,172.274658487GB,644 parked, no actionable ETA.
+
+Chrome singleton14004 remains disconnected/not connecting; no Chrome requests
+were made. Existing passive watcher89653 remains bounded to~16:20 Bangkok.
+Next high-impact UX work: durable per-request download admission/receipts so
+lost responses and backend restarts can recover exact submission outcomes,
+then the outstanding contract/backlog and authorized real-browser verification.
+Do not mark the full goal complete from these offline/HTTP checks.
+
+## Latest — 15 September, 14:45 Bangkok: stale direct Chrome connectors stopped
+
+User again reported CDP prompts. Three direct auto-connect Chrome MCPs were
+found under existing Codex40383 in heimdall-mr despite disabled saved settings.
+Only verified connector launchers/workers were stopped; all six are gone.
+The parent agents, backend57049, singleton14004, queues and media were untouched.
+No actual Chrome connection was requested. Prompt-to-process causation remains
+unproven; do not claim the passive no-client trace proves no displayed prompt.
+
+Added live Codex process ancestry to `npm run test:cdp-config` (5 checks pass),
+plus four classifier tests in `npm run test:cdp` (21 pass). Global/repo rules
+now require checking live stale connectors, not only saved configuration; see
+scripts/CDP.md. The existing passive watch89653 remains active through roughly
+16:20 Bangkok. Do not start another or reconnect Chrome. Read-only plan still
+reports18,333/18,977 saved,172.274658487GB,644 parked,0actionable; no backfill ETA.
+The isolated backend shutdown investigation and UX acceptance work below remain
+unfinished; this prompt investigation took priority and did not restart backend.
+
+## Latest — 15 September: observable playlist preparation and queue receipts
+
+HTTP-side preparation now exposes actual playlist/track/phase and checked/total
+through pace `webAdmission`, displayed in the same Current activity strip before
+Bull has jobs. Server-side single-batch state wraps the existing LibraryService
+loop; it does not schedule a second downloader or change queue/CLI policy.
+UI/backend forbid download-folder changes during preparation. Late/lost HTTP
+responses cannot make active server preparation vanish or permit another batch.
+
+Visible receipts distinguish queued tracks, no-op results and actual local MP3
+additions. `materialize` returns new destinations count; existing callers may
+ignore it. Optional `reused` is a subset of compatibility `skipped`, subtracted
+from the UI's unchanged count. New checkbox selections survive an older reply.
+Queue/resume requests have120s/20s observation deadlines; unknown replies never
+become false download failures or automatic repeated POSTs. Resume reconciles
+from observed unpaused state.10s pace polls are non-overlapping/disposal-safe.
+
+345 backend/44 suites,157 actual Angular DOM,186 acquisition,50 UX and17 CDP
+tests pass, plus backend/frontend typechecks and frontend build (existing
+warnings). See WEBSITE_AUDIT for evidence and limits. The empty-selection live
+POST was safe and returned0queued/0skipped; library returns841. No real media,
+metadata or queued work was changed. No Chrome connection was requested.
+
+Nest watch's old child12707 hung after releasing3000, with zero queue work and
+no children. After TERM failed, that verified idle PID was killed; watch started
+57049 and the API recovered. **Next important investigation: reproduce/fix this
+shutdown hang in isolation**, not repeated healthy-server restarts. Preparation
+state is process-local; durable request-correlated receipts are also outstanding
+for exact lost-reply recovery across restart. Do not claim full UX completion.
+Saved18,333/18,977,172.274658487GB,644 parked and0active/actionable; no ETA.
+The bounded CDP socket watch89653 remains running (see entry below); inspect its
+existing log, never reconnect Chrome or launch another browser for QA.
+
+## Latest — 15 September: saved-library/track recovery verified in rendered DOM
+
+Completed the interrupted local-loading UX fixes and extended them to track
+details. Errors now preserve cached content, name the failed local read in
+Current activity, and offer scoped Retry saved library/tracks actions. They do
+not trigger Spotify sync or acquisition. Empty/filter/Hide finished states have
+distinct wording and direct recovery; active-descendant only names a visible
+row. Both local read paths have30-second deadlines and cancel superseded or
+disposed requests. Quiet reads cannot leave an older visible spinner stuck;
+stale same-playlist track responses cannot replace current tracks.
+
+`npm run test:dom` now passes140/140 actual Angular-template/component DOM cases,
+including16 new recovery/race cases. The runner blocks browser fetch/XHR/socket
+entry points and cleans its temporary generated directory on bootstrap failure.
+It is JSDOM, NOT real browser/layout/audio/Spotify verification.50 UX tests,
+17 CDP/source/watcher tests, frontend spec typecheck and production build pass
+(existing Sass/size warnings). README and WEBSITE_AUDIT describe test boundaries.
+No backend, queue, playlist metadata, MP3 or Chrome connection change was needed.
+
+Next: continue the normative UX acceptance matrix and outstanding backlog;
+live browser/Spotify verification still requires explicit single-connection
+authorization. Do not call this goal complete or reconnect to make tests pass.
+The passive Chrome-request trace below remains bounded and running; inspect
+its log/PID instead of spawning another trace.
+
+## Latest — 15 September, 14:21: recurring Chrome prompt attribution
+
+User again reported Chrome CDP permission prompts. Do not call this permanently
+resolved: the exact current requester remains unidentified. The existing
+singleton PID14004 is unchanged, disconnected/not connecting, with no new
+connection attempt since12:40 Bangkok. Effective Codex settings pass all4 checks:
+direct connector and Chrome/Browser plugins disabled, generic REPL without a
+browser service, unified CUA native-only. Older loaded browser tools must not
+be invoked. No real Chrome request, valid Connect POST or browser QA was run.
+
+Added passive `scripts/cdp-socket-watch.mjs`, documented in scripts/CDP.md.
+It records only OS client socket/process identifiers; no protocol/session data.
+All17 CDP/source/watcher tests pass. A bounded two-hour trace started at14:20:41
+Bangkok, PID89653, log `/tmp/spooty-cdp-watch-YrQQug/events.jsonl`, watching
+port64165 at500ms intervals. Check that log and PID before starting another
+watch; it should end around16:20:41 Bangkok. Initial samples show no client.
+Do not treat absence in sampled TCP records as proof a displayed prompt has
+gone away. Other agents' MCP processes were inspected but not stopped.
+
+The actual Angular component/template suite now runs browser-free in JSDOM:
+`npm run test:dom` passes124/124, no skips. It does not verify pixels, layout,
+audio playback or live Spotify. The interrupted saved-library load/error UX
+work remains in progress and needs dedicated new cases; preserve it.
+Read-only plan:18,333/18,977 songs saved,172.274658487GB unique-inode media;
+644 parked outcomes,0 actionable. Web queues idle/unpaused,0 active/queued.
+No MP3s, playlist metadata or jobs changed. No active download ETA.
+
+## Latest — 15 September: complete discovery and automatic library refresh
+
+The15-minute dashboard cycle now checks the whole Spotify library, not only
+the focused playlist. Recent focused sync cannot hide newly followed playlists;
+recent library checks are reused. Existing work, lost observations, quiet-failure
+backoff and disposal guards are preserved. Known unavailable/connecting/
+disconnected Chrome suppresses quiet metadata submissions. The first explicit
+Sync click explains a known disconnection immediately and may open the existing
+confirmation UI; it never requests Chrome access until explicitly confirmed.
+
+Library discovery now validates complete paging before returning any rows to
+the writer: items/total/offset/limit/terminal next, contiguous safe page URLs,
+stable totals, unique valid IDs and row shape. Partial/malformed discovery is a
+typed incomplete failure with saved-library wording, not an empty success.
+Untitled playlists are retained; missing track counts remain unknown.
+
+Tests exercise new-playlist discovery/hydration through the real backend
+adapter/writer and durable failure after a malformed second page, with no
+download/queue changes.341 backend tests/43 suites,50 browser-free UX tests,
+14 CDP guard tests and4 effective-config checks pass; frontend spec typecheck
+and production build pass (existing warnings). Read-only localhost checks still
+show841 playlists and working partial audio delivery. All849 live metadata
+files retain the prior aggregate hash. No live Spotify success or rendered
+browser interaction was attempted; the proxy remains deliberately disconnected.
+This is another progress iteration, not completion of the full UX goal.
+
+## Latest — 15 September, 14:00: remaining Codex browser routes restricted
+
+Repeat CDP-prompt investigation found a persistent configuration gap: disabling
+the Chrome plugin/direct connector had left the Browser plugin, generic REPL
+browser service and unified CUA browser surface enabled. Global config now
+disables/removes those browser routes; unified CUA keeps native-app control
+only. Global/repo instructions prohibit browser methods still exposed by older
+already-open sessions. See scripts/CDP.md for upgrade/verification details.
+
+`npm run test:cdp-config` passes4 effective-config/installed-launcher checks with
+no browser or native service started; all14 existing CDP checks pass. The
+singleton PID14004 was not restarted or connected. A90-second passive watch
+ending14:00:27 Bangkok collected296 samples with zero debugging clients.
+This does not identify the latest prompt's exact source or guarantee that an
+unrelated application cannot request Chrome access. No other agent, backend,
+queue, saved playlist or MP3 was changed. Full live browser QA remains pending.
+
+## Latest — 15 September: trusted baselines and same-count edits
+
+Normal library sync now requires complete saved membership plus a matching
+available discovery snapshot before skipping tracks. An equal count is not
+enough when revision evidence is absent or the cached membership is unverified.
+Focused refresh clears its old snapshot ID; only a subsequent verified library
+check establishes a new baseline. Unknown revisions continue to be checked.
+An unverified fallback cannot certify a snapshot or count as a verified refresh;
+the UI explains this without falsely claiming the older track list was kept.
+Fully unchanged metadata no longer gets rewritten; owner/name/rank changes do.
+
+Tests now exercise actual same-count reordering through the session discovery,
+collector, adapter and writer with controlled API responses, checking ordered
+row numbers, local audio resolution, untouched MP3 inode/content and no queue
+mutations. The second unchanged sync fetches discovery only and leaves the
+metadata file/inode untouched. This is not live Spotify/browser evidence.
+All849 live dumps currently have no snapshot or completeness evidence; this is
+legacy playlist-metadata state, NOT a new MP3 duration/correctness audit.
+They were not resynced or changed in this iteration. See WEBSITE_AUDIT.md for
+verification and the unchanged live-file hash.
+302 backend tests,41 browser-free UX tests and14 CDP guard tests pass; frontend
+spec typecheck/build pass. Live API remains available with idle/unpaused queues.
+Saved18,333/18,977 songs,172.274658487GB;644 parked outcomes, no active ETA.
+No Chrome connection was requested. Full rendered/live Spotify QA remains open.
+
+## Latest — 15 September: unified sync lifecycle and cross-tab recovery
+
+Library, focused and legacy saved-playlist bulk sync now use one durable
+operation (`operationId`, scope, target, progress, typed failure, result).
+`POST /api/library/sync/playlist/:id` acknowledges immediately; the historical
+blocking resync endpoint joins the same operation or returns409 for another
+scope. All entry points preserve the one-operation lane. State admission must
+persist before work starts. Server restart restores an interruption, not a
+permanent running flag.295 backend tests pass across42 suites.
+
+The dashboard observes idle sync status every15seconds and follows active work
+every2seconds without overlapping requests (10-second deadlines). It sees sync
+started/completed in another tab and does not repeatedly refresh for the same
+completion. Lost acknowledgements cannot turn old results into new success;
+late reads cannot overwrite a newer action. Disposal guards prevent late
+callbacks from restarting polling/submitting.40 browser-free UX tests pass,
+including14 tests executing the actual component lifecycle in Node (not DOM or
+browser tests). Frontend spec typecheck/build pass with existing warnings.
+
+Backend PID69765 was already stopping, with no3000listener, zero active/queued
+jobs and no yt-dlp/ffmpeg children. It was terminated; Nest watch replaced it
+with PID71212, restoring the API at13:39 Bangkok. No queue/media mutation was
+made. The precise remaining shutdown-hook hang still needs an isolated repro;
+do not claim this operational recovery is a permanent shutdown fix.
+
+Real4200-proxied focused sync acknowledged in119ms and finished with durable
+`failureKind=connection`, keeping all849 metadata files byte-identical
+(SHA256 in WEBSITE_AUDIT.md). Saved library returns841 playlists; EARTH Series
+retains78tracks and local audio Range returns206/1024bytes. Physical plan:
+18,333/18,977 songs,172.274658487GB unique-inode MP3s,644 parked outcomes,
+zero actionable songs; no throughput/completion ETA. Chrome proxy PID14004 remains
+disconnected and no permission request was issued.14 CDP guard tests pass.
+
+Full goal remains active. Live rendered interaction/Spotify sync verification
+is still unperformed pending explicit single-connection authorization; do not
+launch another browser. See updated audit backlog for legacy baseline live
+proof, identity/coverage work and playlist-unfollow semantics.
+
+## Latest — 15 September: removal-safe sync and empty-state clarity
+
+Spotify removals are now implemented, not merely rejected by a never-shrink
+guard. See WEBSITE_AUDIT.md and `shared/spotify-membership.ts`. Shorter/empty
+membership requires two matching, fully collected and hydrated API responses.
+Unknown rows, inconsistent counts/confirmation, and hydration/HTTP failures keep
+the prior metadata. MP3s and queued jobs are not mutated. The anonymous embed
+branch has been removed from the playlist API adapter; verified empty is valid.
+Stored evidence distinguishes supported songs from excluded episodes/locals;
+missing discovery counts remain unknown. Verified empty baselines do not loop.
+
+UI receipt says before→after tracks and explicitly keeps MP3s/queued work.
+Empty state distinguishes unloaded, empty Spotify, and unsupported-only lists.
+Focused sync exposes lost Chrome connection in Current activity and offers the
+existing explicit connection action; no automatic permission request occurs.
+
+288 backend tests,186 acquisition tests,18 browser-free UX tests,13 CDP/bypass tests passed; frontend
+app/spec typechecks and production build pass with existing warnings. Real
+collector→adapter→writer regression plus media/queue preservation covered.
+Angular render/interaction cases added but NOT run. Live HTTP disconnected
+EARTH Series sync returns503 clearly and preserves78 tracks and the exact849-file
+metadata hash (see audit). No browser reconnect was made. Goal remains active:
+focused/bulk sync durability, trusted legacy baselines, identity/coverage work,
+and authorized real-browser/Spotify verification still remain.
+
+## Latest — 15 September: close historical CDP bypasses
+
+Repeated live socket checks showed one singleton HTTP process (PID14004),
+disconnected/not connecting, and **zero Chrome debugging clients**. No new
+connection was requested. Other running chrome-devtools-mcp processes belong
+to unrelated Grok sessions and were not connected to main Chrome; they were
+not killed. Do not claim these observations prove what is displaying in Chrome.
+
+Removed all direct/isolated Chrome implementations from five unused historical
+diagnostic helpers; those entry points now exit2 with supported alternatives.
+The supported downloader and Spotify session paths do not invoke them. Added
+an application-wide source boundary test plus a dependency-free GitHub workflow
+to catch reintroduced direct CDP patterns. Workflow is local, not pushed/run on
+GitHub yet. Codex direct MCP remains disabled and its launch command now fails
+closed (`/usr/bin/false`, no auto-connect args), verified via `codex mcp get`.
+Global and project instructions document this for future sessions.
+
+Verification:13 CDP/bypass tests and15 backend connection tests passed; no real
+Chrome request was made. `git diff --check` clean. Saved18,333/18,977 songs,
+172.274658487GB unique-inode MP3s; web queues idle/unpaused with0 active/queued.
+644 outcomes parked; no active throughput or completion ETA. Media and jobs
+were not modified. Do not restart the CLI for parked outcomes.
+
+The preceding connection-UX work is implemented: read-only connection status,
+explicit two-step Connect Chrome action, one shared pending request, no retry
+on approval failure/status loss, and no implicit sync/download after connection.
+Targeted backend tests pass; Angular interaction tests remain typechecked only.
+Completeness validation also rejects short/malformed/changing-count playlist
+responses;13 targeted session/playlist tests passed and frontend build passed
+with existing warnings. Genuine-removal reconciliation remains unfinished.
+Continue safe UX work, but do not run browser QA or the valid connection POST
+without the user's explicit single-connection authorization.
+
+## Latest — 15 September: visible Spotify sync and durable status
+
+Global **Sync Spotify library** is no longer hidden in Library tools; focused
+action says **Sync this playlist**. Both explain metadata vs MP3 downloads.
+First-run empty state has a Sync action. Progress/errors/results use Current
+activity, not another sidebar banner. Polls are non-overlapping and bounded;
+lost observations stop the sync animation and continue status checks without
+another POST. A lost POST response is reconciled, not blindly resubmitted.
+
+Sync progress/results persist beside DB_PATH in `spotify-library-sync.json`.
+After restart, an unfinished operation becomes interrupted rather than running
+forever. Concurrent resyncs of the same playlist share one backend request.
+Metadata-only name/owner/order changes trigger a saved-view refresh too.
+
+Verification:250 backend tests +11 browser-free UX tests passed; frontend
+app/spec typechecks and production build pass (existing Sass/size warnings).
+New Angular interaction tests are written/typechecked, but NOT executed because
+Chrome remains deliberately disconnected. Do not call the UI fully verified or
+the goal complete. Next: expose a clear Spotify connection prerequisite/recovery
+flow, finish individual/bulk sync lifecycle and genuine-removal handling, then
+run the full Angular/live-browser matrix only after an explicit single-connection
+authorization. Do not open a direct MCP/WebSocket or a new browser as a workaround.
+
+Actual backend disconnected sync returned a terminal `CDP proxy is down` in2ms
+and persisted it. All849 metadata files remained byte-identical. Both web queues
+are idle/unpaused, no cooldown/configuration error. Physical CLI plan:18,333/
+18,977 songs saved,172.274658487GB;644 parked outcomes,0 actionable songs. There
+is no active throughput/ETA and no reason to restart the CLI for these outcomes.
+
+## Latest — 15 September: stop repeated Chrome permission prompts
+
+All browser QA must use the singleton HTTP bridge, not direct Chrome MCP.
+The direct connector was mistakenly used during QA. Separately, the old bridge
+kept timed-out sockets alive; five connections were found. Fixed handshake
+cleanup, concurrent connection sharing and stale event isolation; removed
+automatic reconnects from startup/health/ordinary requests. Seven simulated
+socket/HTTP regression tests pass. See `scripts/CDP.md` and `npm run test:cdp`.
+
+The unhealthy bridge was replaced only after download and Spotify-sync idle
+checks. Direct Codex Chrome connectors were stopped; socket inspection showed
+zero Chrome debugging clients. The replacement is deliberately disconnected
+and will not generate permission prompts. Live browser QA therefore needs a
+single explicitly user-authorized reconnect; do not silently initiate one.
+Global Codex configuration disables the direct MCP and Chrome plugin, and global
+AGENTS.md plus a user-requested memory note preserve this for future sessions.
+These changes do not pause download queues or remove files.
+
+## Latest — 15 September: one live activity surface and resumed-web repairs
+
+The user explicitly resumed all web queues, then requested a first-principles
+usability redesign while AFK. **Do not restore the paused state described in
+older entries.** Keep active jobs running. Backend source changes below were
+applied between active jobs; no queues were cleared or media deleted.
+
+The website now has one top activity strip, including exact worker track/stage,
+indeterminate or measured progress, scheduled wake-up, pause/CLI ownership and
+configuration problems. Spotify resync appears there too, with a completion
+receipt. Activity details holds concurrent jobs, chronological recent results,
+queue navigation and technical/historical benchmark data. Sidebar status stacks,
+the disabled status button and bottom overlay are gone. One playlist saved bar;
+short sidebar saved counts; Library tools and Search options collapse secondary
+controls. Narrow screens use collapsible playlist navigation. See the normative
+15 September information architecture in OPERATOR_DASHBOARD_PRINCIPLES.md.
+
+Read-only `/api/youtube/pace` now includes `webActivity` (actual Bull membership,
+in-process stage, session totals/recent events, next delayed timestamp) and
+`configurationError`. `shared/web-activity.ts` is observation only; it does not
+schedule downloads, alter limits, or count reused files as new downloads.
+
+Live resume exposed three concrete web regressions:
+
+- Blank `QUALITY=` was rejected instead of using documented quality 0.
+- Old `YT_SEARCH_BATCH_SIZE=1` / `YT_DOWNLOAD_BATCH_SIZE=1` process variables
+  prevented the retained shared profile from starting. The retained profile
+  now owns its fixed batching; custom mode still validates legacy overrides.
+- Transient `searchAlbum` metadata reached TypeORM UPDATE, which rejected it as
+  a nonexistent column. The persistence boundary strips it while preserving
+  in-flight search context.
+
+After those fixes, searches and download attempts were observed in real Chrome.
+Recovered 33 admissions affected by the configuration bug through the normal
+track-retry API, excluding already active/waiting/delayed jobs; 3 other rows were
+skipped by durable policy. No generic reopening of exhausted candidates. Some
+historical cached sources are now being disqualified by duration and sent back
+through candidate selection; this is not successful MP3 throughput.
+
+Live verification: localhost library/filter/playlist navigation, explicit Spotify
+resync (EARTH Series retained 78 tracks), playback advanced to 7.63 seconds with
+readyState 4/no media error then was closed; activity followed real named searches
+and downloads. The real UI operational-retry action was exercised; K Scope — The
+Setup subsequently completed. Desktop, 1100px and 760px layout checks passed,
+including narrow navigation and absence of document overflow. Final suites:
+242 backend + 140 frontend + 186 CLI = **568 passing**; both typechecks and
+frontend production build pass with the existing Sass/size warnings. Earlier
+status counts are historical; use current API/CLI plan for throughput or ETA.
+
+## Latest — 15 September: actionable UI and real queue membership
+
+The screenshot's EARTH Series (Matt Payne, `7HgFkQvJvZsJZOxN9RypDH`) had
+20 false Pending labels: their Bull search jobs already existed, some alongside
+older historical jobs. New/Pending is now projected as Waiting only when actual
+Bull membership exists; terminal journal outcomes are never reopened by reads.
+No one-shot migration or live job deletion was used. Normal admission of a New
+row checks existing jobs before changing its label, preserving selected URLs.
+Truly unsubmitted New rows can now be admitted by the normal playlist action.
+
+Removed the disabled status-summary button. A separate progress panel names
+saved, not queued, queued/paused, processing, reusable and review-needed work.
+Pending actions remain usable alongside waiting/running tracks. Global live
+work no longer turns unrelated pending tracks into invented waiting work.
+Zero-error counters disappear; saved tracks have no red diagnostic clutter.
+The historical CLI benchmark is a compact secondary disclosure.
+
+Paused work now has **Resume web downloads… → Resume all web queues**, with an
+explicit confirmation that includes older batches, not just the focused list.
+POST `/api/youtube/queues/resume` requires `scope: all-web-queues`; one Redis
+operation checks ownership and invokes the installed Bull resume script for
+both queues. It preserves jobs, markers, safety state and CLI ownership. The
+live queues have NOT been resumed by this UI change.
+
+Verification: 233 backend + 118 frontend + 186 CLI tests = **537 passing**;
+typechecks and production frontend build pass. Existing Sass/size warnings
+remain; work-state styles are a separate stylesheet within existing budgets.
+Real Chrome: EARTH Series shows **54/78 saved, 24 queued — paused**; resume
+confirmation opened and Keep paused worked; local playback advanced
+1.62→13.04 seconds without media errors, then paused. Explicit Spotify resync
+succeeded at 08:44:19 Bangkok and retained all 78 tracks. Real Bull workers in
+isolated Redis resumed and completed preserved test jobs; owner conflicts and
+rename-overwrite hazards failed closed. Missing resume scope returned HTTP400
+against the live API without queue mutation. New admission and duplicate
+prevention were exercised by frontend/backend tests, without starting a live
+bulk download.
+
+Physical catalog remains **18,330/18,977 saved, 172.146744669 GB**. Both live
+queues remain paused/active0 with 13,629 search + 1,792 download jobs preserved
+(job counts are not unique songs). No active throughput or ETA while paused;
+shared CLI plan has 22 actionable unique songs (2 ready, 20 pending) plus625
+parked exceptions. Web queue membership and CLI journal pending are different
+concepts; do not relabel those journal states or create duplicate jobs.
+
+## Latest — 15 September: retry controls and truthful paused-queue labels
+
+The user explicitly directs agents to fix reported bugs, not stop at diagnosis.
+Playlist retry controls no longer disappear because other tracks are waiting,
+scheduled or running; CLI ownership and enqueue/validation guards still apply.
+`GET /api/youtube/pace` now includes read-only Bull pause/active telemetry for
+both queues. The UI says **Work queue — paused**, distinguishes processing from
+waiting playlists, identifies units, and does not invent queued membership for
+unsubmitted dump leftovers while both queues are paused. Retry result messages
+explicitly say paused admissions will not start until queues are resumed.
+
+Real Chrome QA clicked **Retry 20 exhausted searches** on **LTJ Bukem Presents
+Earth 1-7**, ID `04Mj5fSvHOHsO01sdTfDSd`. Result: **Queued 21 · 58 unchanged**.
+The extra track was copyable Big Bud — Spiritual: existing audio 378.090542s
+failed this occurrence's 300.5s Spotify duration, so it was not copied. Fifteen
+valid existing tracks were locally materialized; own-folder coverage rose
+41→56/79. No new MP3 audio was downloaded, moved or deleted. The Setup and The
+Plan retain their selected URLs. The playlist now has **23 Waiting** tracks.
+
+The click also exposed that accepted search jobs remained status New/Pending.
+New admissions now persist Queued/Waiting before Bull can advance to Searching;
+failed admission becomes a clear failed outcome, not false Waiting. The exact
+21 pre-fix test admissions were reconciled to Waiting only after matching their
+paused Bull jobs, playlist, ID, artist, title and old state under a maintenance
+lease; no jobs were added/deleted by that repair. Its ignored one-shot artifact:
+`data/acquire/audits/repair-paused-search-labels-20260915.mjs` (already applied;
+do not rerun against changed state). Both queues remain paused/active0, with
+13,629 search and 1,792 download jobs preserved. There is no active download ETA.
+
+Verification: **227 backend + 115 frontend + 183 CLI tests = 525 passed**;
+backend/frontend typechecks and frontend production build pass (existing Sass
+and bundle/style warnings remain). Live API pause state matched Redis, the real
+Retry button was enabled, its POST succeeded, and Refresh showed Waiting rows.
+Physical catalog remains **18,330/18,977 saved, 172.146744669 GB** unique-inode
+MP3 storage. No full-library queue resume or new throughput trial was performed.
+
+## Latest — 15 September: automatic query fallback and per-candidate evidence
+
+Following the independent EARTH Series audit, CLI and web now share
+`shared/acquisition/search-discovery.ts`: up to three distinct queries (original,
+cached album context, official audio), ten ranked results per query by default,
+deduplicated video IDs, title phrase/artist/edition checks, and the unchanged
+Spotify duration tolerance: ±5%, clamped to 5–20 seconds. No automatic acceptance
+of longer album/12-inch editions. At most two credible candidates lacking a
+duration get paced source inspection, after releasing the search slot. Search
+exhaustion and operational/network failure remain separate outcomes.
+
+Latest per-track evidence is stored atomically under ignored
+`data/acquire/search-diagnostics/` (mode 0600) and available through the read-only
+`GET /api/track/search-evidence?artist=...&name=...` endpoint. The UI's **Search
+evidence** disclosure shows queries, candidate links/durations, rejection reasons
+and selected outcome. Older runs honestly show that detailed evidence was not
+saved. Manual Refresh also reloads active track rows so CLI state changes do not
+leave stale retry badges. Existing parked outcomes are not automatically reopened.
+
+Live first-class CLI search-only validation `2026-09-15T00-57-31-454Z` completed
+normally at **07:58:21 Bangkok**, in 49.36 seconds: **2/2 automatically found**.
+The Setup selected `jAcDqjEo6Rw` on query 2 (album context, 251s vs 250.5s target);
+The Plan selected `cPT6rELtVVU` on query 3 (official audio, 254s vs 254s). Both
+match the independent browser audit; no URLs were manually injected. The first
+queries returned unrelated rifle-scope/TV clips, rejected by the new checks.
+20 and 28 unique candidates were recorded respectively. No network failures,
+bot blocks or MP3 downloads occurred in the successful validation. An earlier
+bounded validation caught a successful-process generic-error-field bug; it was
+fixed and regression-tested before this successful run.
+
+Only the two audit songs were passed to validation using the ignored two-track
+input under `data/acquire/audits/earth-query-validation/`. Never use that input
+as a Spotify resync snapshot. Shared journal now has their validated URLs ready;
+the other 20 user-reopened EARTH searches remain pending. Physical full-catalog
+plan: **18,330/18,977 saved, 172.146744669 GB**, 22 actionable (2 ready + 20 pending),
+625 parked. Both Bull queues stay paused/active0, so no active download ETA.
+No existing audio was moved, deleted or replaced. This is a discovery validation,
+not a new MP3 throughput benchmark; the earlier 9.44/min figure predates this policy.
+
+Verification: **183 CLI + 220 backend + 112 frontend tests = 515 passed**;
+backend typecheck and frontend production build pass. Existing Sass and bundle/
+style budget warnings remain. Real Chrome QA showed both durable result reports,
+selected links, correct tolerances and no horizontal overflow. Local playback
+advanced 6.35→16.34s in a 255.5s MP3 with no media error, then paused.
+Explicit Unplugged resync completed successfully and retained all three tracks.
+Normal Download was inspected on the 17-saved/one-parked Deluxe playlist; its
+bulk control was disabled while existing queued work was preserved. No retry
+button was clicked and no queue was resumed to bypass that guard. Shared web
+download/publication behavior remains covered by the automated integration tests.
+
+## Latest — 15 September: moved media and persistent download-folder setting
+
+The user moved downloaded media to `/Users/dom/Desktop/mp3_downloads`. The
+website's sidebar now provides **Download folder → Save & rescan**; its setting
+was saved through the real UI and survives backend/browser reloads. Persistence
+is ignored mode-0600 `data/settings.json` beside `DB_PATH`; the shared resolver
+uses saved `downloadsPath` ahead of the `DOWNLOADS_PATH` environment fallback.
+New CLI runs/plans use the same setting. No files were moved or deleted by this
+change, and no queue was resumed. Invalid/nonexistent folders are rejected;
+an exclusive maintenance lease blocks changes during CLI ownership or runnable
+web work while preserving paused backlog.
+
+Live physical CLI plan: **18,330/18,977 songs saved, 172.146744669 GB** unique-inode
+MP3 bytes. All 647 accepted exceptions remain parked; `resume.actionable=0`, no
+active/buffered acquisition ETA. The web counts playlist occurrences separately:
+18,572/23,289 in their own folders and 22,537 available across the selected tree.
+Surround Sound now reports 831/862 in its folder, with 23 other-folder reusable
+tracks. Do not mistake missing duplicate playlist copies for lost unique audio.
+
+The web now also displays playlist owner attribution from saved subtitles and
+retains structured public owner metadata on future successful Spotify library
+discovery. “Made for…” is personalization, not ownership/original-creator history.
+See `WEBSITE_AUDIT.md` for verification and limitations of both changes.
+
 ## Latest — 14 September: completed guarded run and first-class CLI migration
 
 The user accepts the remaining647 unavailable tracks; ordinary reruns should
@@ -2064,7 +3447,7 @@ YouTube download does **not** need CDP. Spotify playlist/token refresh does.
 
 - Script: `scripts/cdp-keepalive.mjs`
 - HTTP: `http://127.0.0.1:17331/health` → `{ ok, connected, endpoint, pid }`
-- Reads Chrome `DevToolsActivePort` (recently `ws://127.0.0.1:64165/devtools/browser/7fe206ba-…`)
+- Reads Chrome `DevToolsActivePort` (recently `[historical browser endpoint redacted]`)
 - **Standing order:** reconnect that bridge only. Never `chrome-devtools` MCP new socket, never `Target.activateTarget`.
 - **Current:** process **dead**. Restart:
 

@@ -13,6 +13,8 @@ export enum TrackStatusEnum {
 
 @Entity()
 export class TrackEntity {
+  // Transient query context, populated from the shared exact-ID Spotify cache.
+  searchAlbum?: string;
   @PrimaryGeneratedColumn()
   id?: number;
 
@@ -24,6 +26,9 @@ export class TrackEntity {
 
   @Column({ nullable: true })
   spotifyUrl: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  audioFilename?: string | null;
 
   @Column({ type: 'integer', nullable: true })
   durationMs?: number | null;
@@ -55,6 +60,9 @@ export class TrackEntity {
     videoId: string;
     durationSeconds: number | null;
     title: string;
+    channel?: string;
+    uploader?: string;
+    identityAccepted?: boolean;
   }> | null;
 
   @Column({ type: 'simple-json', nullable: true })

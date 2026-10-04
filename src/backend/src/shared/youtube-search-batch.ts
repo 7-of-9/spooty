@@ -1,6 +1,14 @@
 import { youtubeVideoId } from './youtube-download-batch';
 
-export type YoutubeSearchCandidate = { url: string; videoId: string; durationSeconds: number | null; title: string };
+export type YoutubeSearchCandidate = {
+  url: string;
+  videoId: string;
+  durationSeconds: number | null;
+  title: string;
+  channel?: string;
+  uploader?: string;
+  identityAccepted?: boolean;
+};
 
 export type YoutubeSearchBatchDocument = {
   query: string;
@@ -42,7 +50,8 @@ export function buildYoutubeSearchBatchArgs(opts: {
     args.push('--cookies', opts.cookiesPath);
   }
   const limit = opts.candidateLimit === undefined ? 1 : opts.candidateLimit;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error('YouTube candidate limit must be 1–50');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Error('YouTube candidate limit must be 1–50');
   args.push('--', ...opts.queries.map((query) => `ytsearch${limit}:${query}`));
   return args;
 }
@@ -60,10 +69,7 @@ export function youtubeSearchBatchTimeoutMs(
 
 function queryFromDocument(value: Record<string, unknown>): string | null {
   const originalUrl = value.original_url;
-  if (
-    typeof originalUrl === 'string' &&
-    SEARCH_PREFIX.test(originalUrl)
-  ) {
+  if (typeof originalUrl === 'string' && SEARCH_PREFIX.test(originalUrl)) {
     return originalUrl.replace(SEARCH_PREFIX, '');
   }
   return typeof value.id === 'string' && value.id ? value.id : null;
@@ -85,7 +91,10 @@ function resultUrl(value: Record<string, unknown>): string | null {
   return null;
 }
 
-function resultCandidates(value: Record<string, unknown>, limit: number): YoutubeSearchCandidate[] {
+function resultCandidates(
+  value: Record<string, unknown>,
+  limit: number,
+): YoutubeSearchCandidate[] {
   const entries = Array.isArray(value.entries) ? value.entries : [];
   const candidates: YoutubeSearchCandidate[] = [];
   const seen = new Set<string>();
@@ -93,15 +102,38 @@ function resultCandidates(value: Record<string, unknown>, limit: number): Youtub
     if (!entry || typeof entry !== 'object') continue;
     let url: string | null = null;
     for (const field of ['webpage_url', 'original_url', 'url']) {
-      if (typeof entry[field] === 'string' && youtubeVideoId(entry[field])) { url = entry[field]; break; }
+      if (typeof entry[field] === 'string' && youtubeVideoId(entry[field])) {
+        url = entry[field];
+        break;
+      }
     }
-    if (!url && typeof entry.id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(entry.id)) url = `https://www.youtube.com/watch?v=${entry.id}`;
+    if (
+      !url &&
+      typeof entry.id === 'string' &&
+      /^[A-Za-z0-9_-]{11}$/.test(entry.id)
+    )
+      url = `https://www.youtube.com/watch?v=${entry.id}`;
     const videoId = url && youtubeVideoId(url);
     if (!url || !videoId || seen.has(videoId)) continue;
     seen.add(videoId);
     const duration = entry.duration;
-    candidates.push({ url, videoId, durationSeconds: typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? duration : null,
-      title: typeof entry.title === 'string' ? entry.title.slice(0, 500) : '' });
+    candidates.push({
+      url,
+      videoId,
+      durationSeconds:
+        typeof duration === 'number' &&
+        Number.isFinite(duration) &&
+        duration > 0
+          ? duration
+          : null,
+      title: typeof entry.title === 'string' ? entry.title.slice(0, 500) : '',
+      ...(typeof entry.channel === 'string'
+        ? { channel: entry.channel.slice(0, 500) }
+        : {}),
+      ...(typeof entry.uploader === 'string'
+        ? { uploader: entry.uploader.slice(0, 500) }
+        : {}),
+    });
     if (candidates.length >= limit) break;
   }
   return candidates;
@@ -133,9 +165,21 @@ export function parseYoutubeSearchBatch(
       malformedLines.push(line);
       continue;
     }
-    const requested = typeof record.original_url === 'string' ? Number(record.original_url.match(/^ytsearch(\d+):/)?.[1]) : 5;
-    const candidateLimit = Number.isInteger(requested) && requested >= 1 && requested <= 50 ? requested : 5;
-    documents.push({ query, url: resultUrl(record), candidates: resultCandidates(record, candidateLimit), emptyResults: Array.isArray(record.entries) && record.entries.length === 0 });
+    const requested =
+      typeof record.original_url === 'string'
+        ? Number(record.original_url.match(/^ytsearch(\d+):/)?.[1])
+        : 5;
+    const candidateLimit =
+      Number.isInteger(requested) && requested >= 1 && requested <= 50
+        ? requested
+        : 5;
+    documents.push({
+      query,
+      url: resultUrl(record),
+      candidates: resultCandidates(record, candidateLimit),
+      emptyResults:
+        Array.isArray(record.entries) && record.entries.length === 0,
+    });
   }
   return { documents, malformedLines };
 }

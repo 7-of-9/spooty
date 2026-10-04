@@ -10,7 +10,9 @@ import {
   copyFileSync,
   chmodSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { discoverYoutubeCandidates } from './search-discovery';
+import { SearchDiagnostics } from './search-diagnostics';
 import {
   candidateResultsFromLine,
   sourceEvidenceFromLine,
@@ -414,7 +416,11 @@ export class Transport {
         });
         yes({
           out,
-          error: timedOut ? 'YouTube operation timed out' : classify(err),
+          error: timedOut
+            ? 'YouTube operation timed out'
+            : code === 0 && !isYoutubeRateLimit(err)
+              ? null
+              : classify(err),
           code,
         });
       });
@@ -433,6 +439,94 @@ export class Transport {
     const cookies = this.cookiesFirst();
     if (cookies && !recoveryCookiesAvailable(this.paths.cookies))
       throw new Error('Recovery cookies file unavailable');
+    if (durationCandidates) {
+      const diagnostics = new SearchDiagnostics(
+        join(dirname(durationCandidates.path), 'search-diagnostics'),
+      );
+      let admitted = false;
+      return discoverYoutubeCandidates(
+        songs,
+        candidateLimit,
+        durationCandidates,
+        {
+          search: async (queries, timeoutMs) => {
+            const documents = [];
+            let result;
+            try {
+              await this.pace.run(
+                'search',
+                async () => {
+                  if (!admitted) {
+                    await onAdmitted(songs);
+                    admitted = true;
+                  }
+                  result = await this.process(
+                    buildYoutubeSearchBatchArgs({
+                      queries,
+                      cookiesPath: this.paths.cookies,
+                      useCookies: !!cookies,
+                      client: youtubePlayerClient(!!cookies),
+                      candidateLimit,
+                    }),
+                    'search',
+                    timeoutMs,
+                    (line) =>
+                      documents.push(
+                        ...parseYoutubeSearchBatch(line).documents,
+                      ),
+                  );
+                },
+                () => 0,
+              );
+              return {
+                documents,
+                error:
+                  result?.error ||
+                  (result?.code ? 'Search did not complete' : null),
+              };
+            } catch (error) {
+              return { documents, error: classify(error.message) };
+            }
+          },
+          inspect: async (items, timeoutMs) => {
+            const evidence = new Map();
+            try {
+              const failures = await this.inspectSources(
+                items,
+                (item, source) => evidence.set(item.key, source),
+                () => {},
+                timeoutMs,
+              );
+              return { evidence, error: failures[0]?.error };
+            } catch (error) {
+              return { evidence, error: classify(error.message) };
+            }
+          },
+          onResult,
+          record: (song, report) => {
+            diagnostics.save(song.key, report);
+            this.emit?.('candidate_selection', {
+              key: song.key,
+              maxSearches: candidateLimit,
+              resultsExamined: report.queries.reduce(
+                (n, q) => n + q.candidates.length,
+                0,
+              ),
+              uniqueCandidates: report.uniqueCandidates,
+              queriesTried: report.queries.length,
+              disqualifiedByDuration: song.searchDisqualified,
+              selectedUrl: report.selectedUrl,
+              selectedRank:
+                report.queries
+                  .flatMap((q) => q.candidates)
+                  .find((c) => c.url === report.selectedUrl)?.rank || null,
+              policy: report.policy,
+              diagnostics: true,
+            });
+          },
+        },
+      );
+    }
     const queries = songs.map((s) => youtubeSearchQuery(s.artist, s.name));
     const byQuery = new Map<any, any>();
     songs.forEach((s, i) =>
@@ -464,35 +558,7 @@ export class Transport {
                 tasks.push(
                   Promise.resolve()
                     .then(() => {
-                      if (!durationCandidates) return onResult(s, doc.url);
-                      s.durationCandidates = doc.candidates;
-                      s.searchLimit = candidateLimit;
-                      s.searchDisqualified = doc.candidates.filter(
-                        (item) =>
-                          !durationMatch(s.durationMs, item.durationSeconds).ok,
-                      ).length;
-                      const candidate = durationCandidates.choose(
-                        s,
-                        doc.candidates,
-                      );
-                      this.emit?.('candidate_selection', {
-                        key: s.key,
-                        maxSearches: candidateLimit,
-                        resultsExamined: doc.candidates.length,
-                        disqualifiedByDuration: s.searchDisqualified,
-                        selectedRank: candidate
-                          ? doc.candidates.indexOf(candidate) + 1
-                          : null,
-                        selectedUrl: candidate?.url || null,
-                      });
-                      if (
-                        !candidate &&
-                        doc.emptyResults &&
-                        !durationCandidates.rejected(s).length
-                      )
-                        return onResult(s, null);
-                      if (!candidate) throw new Error(DURATION_NO_CANDIDATE);
-                      return onResult(s, candidate.url);
+                      return onResult(s, doc.url);
                     })
                     .catch((e) => {
                       selectionErrors.set(s.key, classify(e.message));
@@ -525,6 +591,7 @@ export class Transport {
     songs,
     onResult,
     onAdmitted: (songs: any[]) => void = () => {},
+    timeoutMs = 840000,
   ) {
     // Source review is owned YouTube extraction work, not an unmetered probe.
     // Charge one download admission per unique video and use the same process
@@ -567,7 +634,7 @@ export class Transport {
             ...[...byId.values()].map((group) => group[0].url),
           ],
           'download',
-          Math.min(840000, songs.length * 90000),
+          Math.min(timeoutMs, songs.length * 90000),
           (line) => {
             const evidence = sourceEvidenceFromLine(line);
             if (!evidence || !byId.has(evidence.videoId)) return;

@@ -29,15 +29,26 @@ export function validSourceMetadata(value, spotifyId, song) {
   );
 }
 
+export function cachedSourceDuration(cachePath: string, id: string | null, song: any): number | null {
+  if (positiveDurationMs(song.durationMs)) return song.durationMs;
+  if (!id) return null;
+  try {
+    const row = JSON.parse(readFileSync(join(cachePath, `${id}.json`), 'utf8'));
+    return validSourceMetadata(row, id, song) ? row.durationMs : null;
+  } catch { return null; }
+}
+
 export function createDurationResolver(cachePath, fetchMetadata) {
   const pending = new Map<any, any>();
   return async function resolveDuration(song) {
     if (song.durationConflict)
       throw new Error('Spotify source durations conflict');
-    if (positiveDurationMs(song.durationMs)) return song.durationMs;
+    const knownDuration = positiveDurationMs(song.durationMs);
     const ids = [...new Set<string>(song.spotifyIds || [])].filter((id) =>
       /^[A-Za-z0-9]{22}$/.test(id),
     );
+    if (ids.length > 1) throw new Error('Spotify source identity is ambiguous');
+    if (!ids.length && knownDuration) return song.durationMs;
     if (!ids.length) throw new Error('Spotify source duration unavailable');
     for (const id of ids) {
       const path = join(cachePath, `${id}.json`);
@@ -45,6 +56,21 @@ export function createDurationResolver(cachePath, fetchMetadata) {
       try {
         metadata = JSON.parse(readFileSync(path, 'utf8'));
       } catch {}
+      // Album context is useful, but never fetch Spotify solely to enrich an
+      // already known duration. Only trust exact-ID/identity/duration cache hits.
+      if (knownDuration) {
+        if (
+          validSourceMetadata(metadata, id, song) &&
+          metadata.durationMs === song.durationMs
+        ) {
+          song.album =
+            typeof metadata.album === 'string'
+              ? metadata.album.slice(0, 500)
+              : undefined;
+          return song.durationMs;
+        }
+        continue;
+      }
       if (!validSourceMetadata(metadata, id, song)) {
         if (!pending.has(id))
           pending.set(
@@ -81,9 +107,14 @@ export function createDurationResolver(cachePath, fetchMetadata) {
         }
       }
       song.durationMs = metadata.durationMs;
+      song.album =
+        typeof metadata.album === 'string'
+          ? metadata.album.slice(0, 500)
+          : undefined;
       song.durationSpotifyId = id;
       return song.durationMs;
     }
+    if (knownDuration) return song.durationMs;
     throw new Error('Spotify source duration unavailable');
   };
 }

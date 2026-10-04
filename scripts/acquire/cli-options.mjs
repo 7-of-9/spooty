@@ -25,7 +25,7 @@ export const optionDefinitions = {
   window: { type: 'string', commands: pace, min: 8, max: 240, description: 'Download/video admissions per TEN MINUTES, not per second. Omitted: inherit persisted pace.' },
   'batch-size': { type: 'string', commands: run, default: '8', min: 1, max: 8, description: 'Maximum tracks per yt-dlp process.' },
   'search-buffer': { type: 'string', commands: run, default: '192', min: 1, max: 1000000, description: 'Pause fresh searches when this many validated candidates await download; in-flight batches may finish.' },
-  'max-searches': { type: 'string', commands: ['run', 'plan'], default: '10', min: 1, max: 50, description: 'Ranked results per track query, NOT repeated queries; a larger depth reopens exhausted selection.' },
+  'max-searches': { type: 'string', commands: ['run', 'plan'], default: '10', min: 1, max: 50, description: 'Ranked results per query; up to 3 automatic query variants. Not network retries. Larger depth reopens exhausted selection.' },
   'network-retries': { type: 'string', commands: run, default: '5', min: 0, max: 20, description: 'Additional workflow attempts after network failure; candidate disqualifications consume none.' },
   'search-only': { type: 'boolean', commands: run, description: 'Save selected URLs without downloading audio. Does not combine with review actions.' },
   'retry-errors': { type: 'boolean', commands: ['run', 'plan'], description: 'Reopen exhausted network/operation failures; NOT Missing or same-depth no-candidate outcomes.' },

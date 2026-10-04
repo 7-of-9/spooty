@@ -43,7 +43,7 @@ describe('legacy Bull job migration into shared acquisition', () => {
     expect(f.row.status).toBe(TrackStatusEnum.RetryWaiting);
   });
   it('a successful callback without a published file cannot become Completed', async () => {
-    jest.spyOn(f.youtube, 'downloadAndFormat').mockResolvedValue();
+    jest.spyOn(f.youtube, 'downloadAndFormat').mockResolvedValue({ path: f.destination, created: true });
     await f.service.downloadFromYoutube(f.row);
     expect(f.row.status).toBe(TrackStatusEnum.RetryWaiting);
     expect(f.row.operationAttempts).toBe(1);

@@ -1,5 +1,17 @@
-/* You can add global styles to this file, and also import other style files */
-@import "bulma/bulma.scss";
+// Preserve Bulma's reset, themes and the helpers used by both the dashboard and
+// retained legacy components. Unused layout/form/component modules stay out of
+// the first page load. Keep the original module order for the global cascade.
+@use "bulma/sass/utilities";
+@use "bulma/sass/themes";
+@use "bulma/sass/base";
+@use "bulma/sass/elements/tag";
+@use "bulma/sass/components/panel";
+@use "bulma/sass/helpers/color";
+@use "bulma/sass/helpers/flexbox";
+@use "bulma/sass/helpers/typography";
+@use "bulma/sass/helpers/visibility";
+@use "bulma/sass/helpers/other";
+// This is a native CSS import, not the deprecated Sass import mechanism.
 @import "@fortawesome/fontawesome-free/css/all.css";
 
 :root {

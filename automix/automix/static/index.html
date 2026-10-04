@@ -1,0 +1,1889 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automix Audition</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e2e1dc;
+  --accent: #2f6fed; --accent-ink: #fff; --a: #d9772b; --b: #2f9e6e; --overlap: rgba(47,111,237,.12);
+  --xfade: rgba(124,92,255,.20); --xfade-edge: rgba(124,92,255,.85); --glide: rgba(124,92,255,.09);
+  --high: #d9482b; --mid: #c79a1c; --chill: #3a8fb7; --warn: #b5451b; --ok: #2f9e6e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413; --panel: #1d1d1b; --ink: #ecebe6; --muted: #9a9993; --line: #2e2e2b;
+    --accent: #5b8ff9; --overlap: rgba(91,143,249,.16); --warn: #f08a5d; --ok: #5cc795;
+    --xfade: rgba(150,120,255,.24); --xfade-edge: rgba(170,145,255,.9); --glide: rgba(150,120,255,.10);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header .meta { color: var(--muted); font-size: 12px; }
+header .spacer { flex: 1; }
+.sets { display: flex; gap: 6px; align-items: center; }
+.sets select { font-size: 13px; padding: 4px 8px; max-width: 320px; }
+.set-desc { font-size: 13px; color: var(--muted); font-weight: 600; }
+.set-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 10px; }
+.set-row .spacer { flex: 1; }
+
+.picker { border: 2px solid var(--accent); }
+.cand { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; }
+.cand.playing { outline: 2px solid var(--accent); background: var(--overlap); }
+.cand .num { font-weight: 700; font-size: 20px; text-align: center; color: var(--muted); }
+.cand .t { font-weight: 600; }
+.cand .m { font-size: 12px; color: var(--muted); font-weight: 400; }
+.cand .badges { margin: 4px 0 0; }
+.btn-reject { background: var(--warn); border-color: var(--warn); color: #fff; font-weight: 600; }
+.btn-approve { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(440px, 92vw); }
+.modal input[type=text] { width: 100%; padding: 6px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+.build-note { font-size: 13px; }
+.shape { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; }
+.shape label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.shape label b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.shape .row { flex-wrap: nowrap; gap: 6px; }
+.shape input[type=range] { flex: 1; accent-color: var(--accent); }
+.shape .lbl { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.shape button { padding: 1px 7px; }
+@media (max-width: 700px) { .shape { grid-template-columns: 1fr; } }
+.rating { background: linear-gradient(90deg, rgba(217,72,43,.10), rgba(199,154,28,.08), rgba(47,158,110,.12)); border-radius: 8px; padding: 10px; border-top: 0; }
+.rating input[type=range] { height: 26px; }
+.rating input[type=range]::-webkit-slider-runnable-track { height: 10px; border-radius: 5px;
+  background: linear-gradient(90deg, #d9482b, #c79a1c 50%, #2f9e6e); }
+.rating input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; margin-top: -6px; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--panel); border: 3px solid var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.rating .val { min-width: 84px; font-size: 18px; padding: 4px 8px; }
+.rating .val .lab { display: block; font-size: 9px; font-weight: 400; color: var(--muted); letter-spacing: .05em; }
+.jr { font-weight: 700; }
+.rating { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.rating input[type=range] { flex: 1; accent-color: var(--accent); }
+.rating .val { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+.rating .val.bad { color: var(--warn); border-color: var(--warn); }
+.rating .val.good { color: var(--ok); border-color: var(--ok); }
+.rating .lbl { font-size: 11px; color: var(--muted); }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 0; height: calc(100vh - 49px); }
+main[hidden] { display: none; }
+#medley-main canvas { width: 100%; display: block; cursor: pointer; }
+#m-strip { height: 56px; }
+#m-wave { height: 200px; }
+.m-events { font-size: 13px; margin-top: 8px; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-variant-numeric: tabular-nums; }
+.m-events .when { color: var(--muted); }
+.badge.fail { color: #fff; background: var(--warn); border-color: var(--warn); }
+#params-col { display: none; }
+body.show-params main { grid-template-columns: 300px minmax(0, 1fr) 380px; }
+body.show-params #params-col { display: block; }
+.in-select { width: 100%; font: 600 15px/1.3 inherit; padding: 5px 6px; margin: 2px 0 4px; background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; }
+.in-select.previewing { border: 2px solid var(--accent); }
+.deck .preview-tag { color: var(--accent); font-weight: 700; letter-spacing: .04em; }
+@media (max-width: 1100px) { main { grid-template-columns: 1fr; height: auto; } }
+.col { overflow-y: auto; padding: 14px 16px; border-right: 1px solid var(--line); }
+.col:last-child { border-right: 0; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+details { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin-bottom: 10px; }
+summary { cursor: pointer; padding: 8px 10px; font-weight: 600; font-size: 13px; }
+.param { padding: 4px 10px 8px; }
+.param label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.param label b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.param input[type=range] { width: 100%; }
+.param select { width: 100%; padding: 4px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+.param .help { font-size: 11px; color: var(--muted); margin-top: 2px; }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.nav .pos { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 90px; text-align: center; }
+.pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch; }
+.deck { border-left: 4px solid var(--a); padding: 4px 10px; }
+.deck.b { border-left-color: var(--b); }
+.deck .t { font-weight: 600; font-size: 15px; }
+.deck .ar { color: var(--muted); }
+.deck .facts { font-size: 12px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.arrow { align-self: center; font-size: 20px; color: var(--muted); }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.badge { font-size: 12px; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--line); }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.reason { color: var(--warn); font-size: 12px; min-height: 16px; }
+canvas { width: 100%; height: 110px; display: block; cursor: pointer; border-radius: 6px; background: var(--bg); }
+.transport { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.transport .time { font-variant-numeric: tabular-nums; color: var(--muted); margin-left: auto; }
+.status { font-size: 12px; color: var(--muted); min-height: 16px; }
+.ov-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ov-grid .param { padding: 0; }
+.ov-grid input[type=number] { width: 100%; padding: 4px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+.order { list-style: none; margin: 0; padding: 0; }
+.order li { display: grid; grid-template-columns: 26px 8px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 5px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.order li:hover { background: var(--overlap); }
+.order li.cur { background: var(--overlap); outline: 1px solid var(--accent); }
+.order li.excl { opacity: .45; }
+.order .n { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
+.order .tier { width: 8px; height: 26px; border-radius: 2px; }
+.tier.high { background: var(--high); } .tier.mid { background: var(--mid); } .tier.chill { background: var(--chill); }
+.order .name { overflow: hidden; }
+.order .name div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order .name .sub { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.order .ops { display: flex; gap: 2px; opacity: .3; }
+.order li:hover .ops { opacity: 1; }
+.order .ops button { padding: 0 5px; font-size: 11px; }
+.join { font-size: 10px; color: var(--muted); padding: 0 0 0 40px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.join.cur { color: var(--accent); font-weight: 600; }
+.join .st-fade, .join .st-echo, .join .st-cut { color: var(--warn); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.energy { height: 4px; background: var(--line); border-radius: 2px; margin-top: 3px; }
+.energy i { display: block; height: 100%; border-radius: 2px; background: var(--muted); }
+kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.small { font-size: 12px; color: var(--muted); }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Automix Audition</h1>
+  <span class="meta" id="folder"></span>
+  <span class="spacer"></span>
+  <label class="sets"><span class="meta">Set</span><select id="sets" title="Switch set"></select></label>
+  <button id="new-set" title="Create a new set">+ New set</button>
+  <button id="toggle-params" title="Show the engine's tuning parameters">⚙ Engine settings</button>
+  <span class="meta" id="summary"></span>
+  <button id="render-btn" class="primary">Render full mix</button>
+  <a id="m-dl" class="primary" hidden download style="padding:6px 12px;border-radius:8px;background:var(--accent);color:var(--accent-ink);text-decoration:none">⬇ Medley MP3</a>
+</header>
+<main>
+  <section class="col" id="params-col">
+    <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+      <h2 style="margin:0">Parameters</h2>
+      <button id="reset-params" title="Restore defaults">Reset</button>
+    </div>
+    <div class="small" style="margin-bottom:10px">Tuning knobs for the ordering and transition engine. You normally don't need these — use the ratings, approve/reject and alternatives instead.</div>
+    <div id="params"></div>
+  </section>
+
+  <section class="col">
+    <div class="set-row">
+      <span class="set-desc" id="set-desc"></span>
+      <span class="spacer"></span>
+      <button id="undo-btn" title="Undo the last change to this set's order">↶ Undo</button>
+      <button id="regen-btn" title="Generate a new version of this set from its arc, using your ratings as weights (this version is kept)">Regenerate…</button>
+      <button id="rename-btn">Rename</button>
+      <button id="delete-btn">Delete set</button>
+    </div>
+    <div class="card picker" id="picker" hidden></div>
+    <div class="card" id="build-card" hidden></div>
+    <div class="nav">
+      <button id="prev" title="Previous transition (←)">◀ Prev</button>
+      <span class="pos" id="pos"></span>
+      <button id="next" title="Next transition (→)">Next ▶</button>
+      <label class="small" style="margin-left:auto"><input type="checkbox" id="autoplay" checked> autoplay</label>
+      <label class="small"><input type="checkbox" id="autoadvance"> auto-advance</label>
+    </div>
+
+    <div class="card" id="tr-card">
+      <div class="pair">
+        <div class="deck a" id="deck-a"></div>
+        <div class="arrow">→</div>
+        <div class="deck b" id="deck-b"></div>
+      </div>
+      <div class="badges" id="badges"></div>
+      <div class="reason" id="reason"></div>
+    </div>
+
+    <div class="card" id="wave-card">
+      <canvas id="wave" width="1200" height="220"></canvas>
+      <div class="transport">
+        <button id="play" class="primary">Play</button>
+        <button id="jump" title="Jump to 4 s before the overlap (J)">⤓ Overlap</button>
+        <button id="rerender" title="Reload clip (R)">Reload</button>
+        <span class="status" id="clip-status"></span>
+        <span class="time" id="time"></span>
+      </div>
+      <div class="shape" id="shape-row" hidden>
+        <div>
+          <label><span>Handover — where A and B trade places</span><b id="ho-val"></b></label>
+          <div class="row"><span class="lbl">A out early · B in fast</span>
+            <input type="range" id="ho" min="0.1" max="0.9" step="0.05">
+            <span class="lbl">A lingers · B in late</span><button id="ho-reset" title="Back to default">↺</button></div>
+        </div>
+        <div>
+          <label><span>Blend length</span><b id="len-val"></b></label>
+          <div class="row"><span class="lbl">short</span>
+            <input type="range" id="len" min="2" max="60" step="0.01">
+            <span class="lbl">long</span><button id="len-reset" title="Back to automatic">↺</button></div>
+          <div class="row" style="margin-top:6px;gap:4px;flex-wrap:wrap">
+            <span class="lbl">fine-tune:</span>
+            <button data-nudge="-0.1" title="Blend 0.1 s shorter">−0.1 s</button><button data-nudge="-0.01" title="Blend 10 ms shorter">−0.01</button>
+            <button data-nudge="0.01" title="Blend 10 ms longer">+0.01</button><button data-nudge="0.1" title="Blend 0.1 s longer">+0.1 s</button>
+            <label class="small" style="margin-left:8px;gap:6px;display:flex;align-items:center"><input type="checkbox" id="snap" checked> snap to aligned beats (fades)</label>
+          </div>
+          <div class="row small" id="downbeat-row" style="margin-top:4px;gap:4px;flex-wrap:wrap" hidden></div>
+        </div>
+      </div>
+      <div class="rating">
+        <span class="lbl">shit</span>
+        <input type="range" id="rate" min="0" max="100" step="1" value="50">
+        <span class="lbl">great</span>
+        <span class="val" id="rate-val">–</span>
+        <button id="rate-clear" title="Remove rating">✕</button>
+        <button id="approve-btn" class="btn-approve" title="Good join: rate it at least 80 and move on (A)">✓ Approve</button>
+        <button id="reject-btn" class="btn-reject" title="Bad join: rate it 20 and pick a replacement (X)">✗ Reject → replace</button>
+        <button id="alts-btn" title="Hear other tracks that could follow the outgoing track, without rejecting this join">Alternatives…</button>
+        <button id="next-unrated" title="Jump to the next transition you haven't rated">Next unrated ▶</button>
+        <span class="small" id="rate-count"></span>
+      </div>
+      <audio id="audio" preload="auto"></audio>
+      <div class="small" style="margin-top:6px">Colour = how much of what you hear is <span style="color:var(--a);font-weight:700">A</span> vs <span style="color:var(--b);font-weight:700">B</span> ·
+        ticks: <span style="color:var(--a)">A's beats along the top</span>, <span style="color:var(--b)">B's along the bottom</span>, tall = downbeat · faint full-height lines = one locked beat grid</div>
+      <div class="small" style="margin-top:2px"><kbd>←</kbd>/<kbd>→</kbd> prev/next · <kbd>Space</kbd> play/pause · <kbd>J</kbd> jump to overlap · click waveform to seek</div>
+    </div>
+
+    <div class="card" id="ov-card">
+      <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+        <h2 style="margin:0">This transition only</h2>
+        <button id="clear-ov">Clear overrides</button>
+      </div>
+      <div class="ov-grid" id="overrides"></div>
+    </div>
+
+    <div class="card" id="render-card" hidden>
+      <h2>Full mix</h2>
+      <div id="render-status" class="small"></div>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+      <h2 style="margin:0">Running order</h2>
+      <span class="small" id="order-count"></span>
+    </div>
+    <ul class="order" id="order"></ul>
+    <div id="excluded" class="small" style="margin-top:10px"></div>
+  </section>
+</main>
+<!-- A medley is auditioned from its rendered MP3: each join is "A's highlight → B's landing". -->
+<main id="medley-main" hidden>
+  <section class="col">
+    <div class="set-row"><span class="set-desc" id="m-desc"></span></div>
+    <div class="card"><canvas id="m-strip" width="1600" height="56" title="The whole medley: click to jump"></canvas></div>
+    <div class="nav">
+      <button id="m-prev" title="Previous join (←)">◀ Prev</button>
+      <span class="pos" id="m-pos"></span>
+      <button id="m-next" title="Next join (→)">Next ▶</button>
+      <label class="small" style="margin-left:auto"><input type="checkbox" id="m-autoplay" checked> autoplay</label>
+      <label class="small"><input type="checkbox" id="m-flow" checked> keep playing into the next join</label>
+    </div>
+    <div class="card">
+      <div class="pair"><div class="deck a" id="m-deck-a"></div><div class="arrow">→</div><div class="deck b" id="m-deck-b"></div></div>
+      <div class="badges" id="m-badges"></div>
+      <div class="m-events" id="m-events"></div>
+    </div>
+    <div class="card">
+      <canvas id="m-wave" width="1600" height="200" title="The rendered mix around this landing: click to play from there"></canvas>
+      <div class="transport">
+        <button id="m-play" class="primary">Play</button>
+        <button id="m-jump" title="Play from just before this join (J)">⤓ Join</button>
+        <span class="status" id="m-status"></span>
+        <span class="time" id="m-time"></span>
+      </div>
+      <div class="rating">
+        <span class="lbl">shit</span>
+        <input type="range" id="m-rate" min="0" max="100" step="1" value="50">
+        <span class="lbl">great</span>
+        <span class="val" id="m-rate-val">–</span>
+        <button id="m-approve" class="btn-approve" title="Good join: 80+ (A)">✓ Approve</button>
+        <button id="m-reject" class="btn-reject" title="Bad join: 20 (X)">✗ Reject</button>
+        <span class="small" id="m-rate-count"></span>
+      </div>
+      <audio id="m-audio" preload="auto"></audio>
+    </div>
+  </section>
+  <section class="col">
+    <h2 style="margin-top:0">Songs <span class="small" id="m-songs-meta"></span></h2>
+    <ul class="order" id="m-songs"></ul>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let S = null;            // server public state
+let cur = 0;             // transition index
+let version = 0;         // bumps whenever the plan changes
+let markers = null;
+let peaks = null;
+let loadToken = 0;
+let clipAbort = null;
+let clipIsCandidate = false;
+const audio = $("audio");
+
+const fmt = (s) => { if (!isFinite(s)) return "–"; const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
+const fmtH = (s) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : `${m}m`; };
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+// ---------------------------------------------------------------- parameters
+function buildParams() {
+  const groups = {};
+  for (const p of S.schema) (groups[p.group] ||= []).push(p);
+  const root = $("params");
+  root.innerHTML = "";
+  let first = true;
+  for (const [g, list] of Object.entries(groups)) {
+    const d = document.createElement("details");
+    d.open = first || g === "Transitions"; first = false;
+    d.innerHTML = `<summary>${g}</summary>`;
+    for (const p of list) d.appendChild(paramControl(p));
+    root.appendChild(d);
+  }
+}
+
+function paramControl(p) {
+  const wrap = document.createElement("div");
+  wrap.className = "param";
+  const v = S.state.params[p.key];
+  if (p.type === "range") {
+    wrap.innerHTML = `<label>${p.label} <b>${v}</b></label><input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${v}">`;
+    const input = wrap.querySelector("input"), out = wrap.querySelector("b");
+    input.addEventListener("input", () => { out.textContent = input.value; });
+    input.addEventListener("change", () => setParam(p.key, Number(input.value)));
+  } else if (p.type === "select") {
+    wrap.innerHTML = `<label>${p.label}</label><select>${p.options.map((o) => `<option value="${o}" ${String(o) === String(v) ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+    const sel = wrap.querySelector("select");
+    sel.addEventListener("change", () => setParam(p.key, typeof p.options[0] === "number" ? Number(sel.value) : sel.value));
+  } else if (p.type === "bool") {
+    wrap.innerHTML = `<label><span><input type="checkbox" ${v ? "checked" : ""}> ${p.label}</span></label>`;
+    const cb = wrap.querySelector("input");
+    cb.addEventListener("change", () => setParam(p.key, cb.checked));
+  }
+  if (p.help) wrap.insertAdjacentHTML("beforeend", `<div class="help">${p.help}</div>`);
+  return wrap;
+}
+
+async function setParam(key, value) { await update({ params: { [key]: value } }); }
+
+const ORDER_OPS = ["active_set", "new_set", "delete_set", "regenerate", "undo", "move", "remove", "insert_best", "params", "reset_params"];
+async function update(body, { keepPairPosition = true, load = true, playFromXfade = false } = {}) {
+  const before = S && S.plan.transitions[cur] ? S.plan.transitions[cur].key : null;
+  if (picker && ORDER_OPS.some((k) => k in body)) { picker = null; pickerToken++; renderPicker(); }
+  if (ORDER_OPS.some((k) => k in body) || "pick" in body) { alts = null; altsToken++; if (!("pick" in body)) appendMode = false; }
+  $("clip-status").textContent = "re-planning…";
+  S = await api("/api/state", body);
+  version++;
+  if (keepPairPosition && before) {
+    const same = S.plan.transitions.findIndex((t) => t.key === before);
+    if (same >= 0) cur = same;
+  }
+  cur = Math.min(cur, Math.max(0, S.plan.transitions.length - 1));
+  if (!currentAlt()) shapeFromJoin();         // an alternative keeps the carried-over values
+  renderAll();
+  if (!S.plan.transitions.length && !appendMode) { audio.pause(); markers = null; peaks = null; $("clip-status").textContent = ""; }
+  else if (load && currentAlt()) selectAlt(alts.sel, { playFromXfade });
+  else if (load && !appendMode) loadClip({ playFromXfade });
+  if (!appendMode && S.plan.transitions.length && !alts) loadAlts(cur);
+}
+
+// ---------------------------------------------------------------- order list
+function renderOrder() {
+  const ol = $("order");
+  ol.innerHTML = "";
+  const trs = S.plan.transitions;
+  S.plan.order.forEach((t, i) => {
+    const li = document.createElement("li");
+    if (i === cur || i === cur + 1) li.classList.add("cur");
+    li.innerHTML = `<span class="n">${i + 1}</span><span class="tier ${t.tier}" title="${t.tier} energy"></span>
+      <div class="name"><div title="${esc(t.artist)} – ${esc(t.title)}">${esc(t.title)}</div>
+      <div class="sub">${esc(t.artist)} · ${t.bpm.toFixed(1)} · ${t.camelot} · ${fmt(t.start)}</div>
+      <div class="energy"><i style="width:${Math.round(t.energy * 100)}%"></i></div></div>
+      <span class="ops"><button data-op="up" title="Move up">↑</button><button data-op="down" title="Move down">↓</button><button data-op="x" title="Leave out of the mix">✕</button></span>`;
+    li.addEventListener("click", (e) => {
+      const op = e.target.dataset && e.target.dataset.op;
+      if (op) { e.stopPropagation(); return orderOp(i, op); }
+      go(Math.min(i, trs.length - 1));
+    });
+    ol.appendChild(li);
+    if (i < trs.length) {
+      const tr = trs[i];
+      const j = document.createElement("li");
+      j.className = "join" + (i === cur ? " cur" : "");
+      j.style.display = "block";
+      const rv = ratings()[tr.key];
+      j.innerHTML = `↳ <span class="st-${tr.style}">${tr.style}</span>${tr.beatmatch ? ` · ${tr.bars} bars · ${tr.stretch_pct}%` : ` · ${tr.T.toFixed(1)}s`}${Object.keys(tr.override || {}).length ? " · tuned" : ""}${rv != null ? ` · <span class="jr" style="color:${rateColor(rv)}">★${rv}</span>` : ""}`;
+      j.addEventListener("click", () => go(i));
+      ol.appendChild(j);
+    }
+  });
+  const un = S.unplaced || [];
+  $("order-count").textContent = `${S.plan.order.length} placed${un.length ? ` · ${un.length} not in set` : ""}`;
+  $("excluded").innerHTML = un.length
+    ? `<b>Not in this set (${un.length}):</b> ` + un.map((t) => `<a href="#" data-id="${esc(t.id)}" title="Insert at its best spot">${esc(t.title)}</a>`).join(", ") +
+      ` — click one to insert it where it fits best` +
+      (S.plan.order.length ? `<div style="margin-top:8px"><button id="build-next-inline">Pick the next track to add ▶</button></div>` : "")
+    : "";
+  $("excluded").querySelectorAll("a").forEach((a) => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    update({ insert_best: { id: a.dataset.id } }, { keepPairPosition: false });
+  }));
+  const bn = $("build-next-inline");
+  if (bn) bn.addEventListener("click", startAppend);
+}
+
+function orderOp(i, op) {
+  const ids = S.plan.order.map((t) => t.id);
+  if (op === "x") return update({ remove: { id: ids[i] } }, { keepPairPosition: false });
+  return update({ move: { index: i, dir: op } }, { keepPairPosition: false });
+}
+
+// ---------------------------------------------------------------- transition card
+function trackCard(t, label) {
+  return `<div class="ar">${label} · ${esc(t.artist)}</div><div class="t">${esc(t.title)}</div>
+    <div class="facts">${t.bpm.toFixed(1)} BPM · ${t.key} (${t.camelot}) · ${t.tier} ${t.energy.toFixed(2)} · ${t.lufs} LUFS · beat reg ${t.regularity.toFixed(2)}</div>`;
+}
+
+function factsOf(t) {
+  return `${t.bpm.toFixed(1)} BPM · ${t.key} (${t.camelot}) · ${t.tier} ${t.energy.toFixed(2)} · ${t.lufs} LUFS · beat reg ${t.regularity.toFixed(2)}`;
+}
+
+function viewSlot() { return appendMode ? S.plan.order.length - 1 : cur; }
+function currentAlt() { return alts && alts.slot === viewSlot() && alts.sel >= 0 ? alts.candidates[alts.sel] : null; }
+function displayedKey() {
+  const c = currentAlt();
+  if (c) return `${alts.a}>${c.id}`;
+  const tr = S.plan.transitions[cur];
+  return appendMode || !tr ? null : tr.key;
+}
+
+function inDeck(b, cand, slot) {
+  const opts = [];
+  if (b) opts.push(`<option value="cur" ${cand ? "" : "selected"}>${esc(b.title)} — current</option>`);
+  else opts.push(`<option value="" disabled ${cand ? "" : "selected"}>— choose the next track —</option>`);
+  if (alts && alts.slot === slot) {
+    const lab = alts.target ? `Alternatives that fit this slot (${alts.target.bucket} wave, energy ≈ ${alts.target.energy.toFixed(2)})`
+                            : "Alternatives (best flow)";
+    opts.push(`<optgroup label="${esc(lab)}">` + alts.candidates.map((c, i) =>
+      `<option value="${i}" ${alts.sel === i ? "selected" : ""}>${i + 1}. ${esc(c.title)} · ${esc(c.artist)} — ${esc(c.fit)} · energy ${c.energy.toFixed(2)}${c.style ? ` · ${c.style} ${c.blend}s` : ""}${c.rating != null ? ` · ★${c.rating}` : ""}${c.moves ? ` · ⤴ moves up from #${c.moves.from}` : " · unused"}</option>`).join("") + `</optgroup>`);
+    if (alts.remaining) opts.push(`<option value="more">More suggestions… (${alts.remaining} left)</option>`);
+    if (!alts.candidates.length) opts.push(`<option value="" disabled>no alternatives left</option>`);
+  } else {
+    opts.push(`<option value="" disabled>loading alternatives…</option>`);
+  }
+  const facts = cand ? `${esc(cand.artist)} · ${cand.bpm.toFixed(1)} BPM · ${cand.camelot} · ${esc(cand.bucket || "")} · energy ${cand.energy.toFixed(2)} · ${esc(cand.source)}`
+                     : (b ? `${esc(b.artist)} · ${factsOf(b)}` : "");
+  return `<div class="ar">In${cand ? ` · <span class="preview-tag">PREVIEWING AN ALTERNATIVE</span>` : ""}</div>
+    <select id="in-select" class="in-select ${cand ? "previewing" : ""}" title="Pick a different track to follow the outgoing one">${opts.join("")}</select>
+    <div class="facts">${facts}</div>
+    ${cand ? `<div class="row" style="margin-top:6px"><button class="btn-approve" id="use-alt" title="Approve this alternative: rate it at least 80, swap it in, go to the next join (A / Enter)">✓ Approve this one</button>${b ? `<button id="back-cur">Back to current</button>` : ""}</div>` : ""}`;
+}
+
+function renderCard() {
+  const trs = S.plan.transitions;
+  const inAppend = appendMode && S.plan.order.length > 0;
+  if (!trs.length && !inAppend) return;
+  const slot = viewSlot();
+  const a = S.plan.order[slot];
+  const tr = inAppend ? null : trs[cur];
+  const b = inAppend ? null : S.plan.order[cur + 1];
+  const cand = currentAlt();
+  $("pos").textContent = inAppend ? `adding track ${S.plan.order.length + 1}` : `${cur + 1} / ${trs.length}`;
+  $("deck-a").innerHTML = `<div class="ar">Out · ${esc(a.artist)}</div><div class="t">${esc(a.title)}</div><div class="facts">${factsOf(a)}</div>`;
+  $("deck-b").innerHTML = inDeck(b, cand, slot);
+  $("in-select").addEventListener("change", (e) => {
+    const v = e.target.value;
+    if (v === "cur") selectAlt(-1);
+    else if (v === "more") loadAlts(slot, { more: true, autoSel: true });
+    else if (v !== "") selectAlt(Number(v));
+  });
+  if ($("use-alt")) $("use-alt").addEventListener("click", () => approveJoin());
+  if ($("back-cur")) $("back-cur").addEventListener("click", () => selectAlt(-1));
+  $("ov-card").hidden = !tr || !!cand;
+  renderShape();
+  if (cand) {
+    $("badges").innerHTML = candBadges(cand) + `<span class="badge ${cand.fit === "fits the set" ? "ok" : "warn"}">${esc(cand.fit)}</span>` + movesNote(cand);
+    $("reason").textContent = cand.reason || "";
+    return;
+  }
+  if (!tr) {
+    $("badges").innerHTML = `<span class="badge">choose what comes next from the In list</span>`;
+    $("reason").textContent = "";
+    return;
+  }
+  const kd = tr.key_distance;
+  const keyBadge = kd <= 1 ? `<span class="badge ok">key ${kd === 0 ? "same" : "compatible"}</span>` : `<span class="badge ${kd >= 3 ? "warn" : ""}">key distance ${kd}</span>`;
+  const st = tr.stretch_pct == null ? "" : `<span class="badge ${tr.stretch_pct <= S.state.params.max_stretch_pct ? "ok" : "warn"}">tempo Δ ${tr.stretch_pct}%${tr.k !== 1 ? ` (×${tr.k})` : ""}</span>`;
+  $("badges").innerHTML = `<span class="badge">${tr.style}${tr.requested !== tr.style ? ` (asked ${tr.requested})` : ""}</span>` +
+    (tr.beatmatch ? `<span class="badge ok">beatmatched · ${tr.bars} bars${tr.glide_bars ? ` +${tr.glide_bars} glide` : ""}</span>` : `<span class="badge">${tr.T.toFixed(1)} s</span>`) +
+    keyBadge + st + `<span class="badge">A out @ ${fmt(tr.a_out_start)} · B in @ ${fmt(tr.b_in_start)}</span>`;
+  const rv = ratings()[tr.key];
+  if (rv != null) $("badges").insertAdjacentHTML("beforeend", `<span class="badge" style="color:${rateColor(rv)};border-color:${rateColor(rv)};font-weight:700">★ you rated ${rv}</span>`);
+  $("reason").textContent = tr.reason || "";
+  renderOverrides(tr);
+}
+
+// ---------------------------------------------------------------- live preview while dragging
+// The server sends per-bin bass/high levels of A (before its out point) and B (after its in
+// point); the page re-mixes them with the same curves as the renderer on every slider move.
+let envCache = { key: null, data: null, scale: 1 };
+let previewState = null;      // {markers, peaks, mix} shown while dragging / until real audio lands
+
+function displayPair() { const c = currentAlt(); if (c) return `${alts.a}>${c.id}`; const tr = S.plan.transitions[cur]; return tr && !appendMode ? tr.key : null; }
+function envKey() { const k = displayPair(); return k ? `${k}|${version}|${shapeQuery()}` : null; }
+// A pair's envelopes depend only on the two tracks, so they stay usable across re-renders
+function envUsable() { const k = displayPair(); return !!(envCache.data && k && envCache.key && envCache.key.split("|")[0] === k); }
+
+async function loadEnvelope() {
+  const key = envKey();
+  if (!key || envCache.key === key) return;
+  const c = currentAlt();
+  try {
+    const d = await api(c ? `/api/candidate/envelope?slot=${alts.slot}&id=${encodeURIComponent(c.id)}${shapeQuery()}`
+                          : `/api/transition/${cur}/envelope?v=${version}`);
+    if (envKey() !== key) return;
+    envCache = { key, data: d };
+    calibratePreview();
+  } catch (e) { /* preview is optional */ }
+}
+
+function fc(x, kind) {
+  x = Math.min(1, Math.max(0, x));
+  return kind === "linear" ? x : kind === "s_curve" ? 0.5 - 0.5 * Math.cos(Math.PI * x) : Math.sin(0.5 * Math.PI * x);
+}
+function warpU(u, h) {
+  h = Math.min(0.95, Math.max(0.05, h));
+  return Math.abs(h - 0.5) < 1e-6 ? u : Math.pow(u, Math.log(0.5) / Math.log(h));
+}
+function gainsAt(style, u, h, sw, beatFrac, kind) {     // [A bass, A highs, B bass, B highs]
+  if (style === "bassswap") {
+    sw = Math.min(0.95, Math.max(0.05, sw));
+    const wIn = Math.min(sw, 0.5), wOut = Math.min(1 - sw, 0.5);
+    const bHi = u < sw - wIn ? 0 : u < sw ? fc((u - (sw - wIn)) / wIn, kind) : 1;
+    const aHi = u < sw ? 1 : u < sw + wOut ? fc(1 - (u - sw) / wOut, kind) : 0;
+    const aLo = u < sw ? 1 : (u < sw + beatFrac ? 1 - (u - sw) / beatFrac : 0);
+    return [aLo, aHi, 1 - aLo, bHi];
+  }
+  if (style === "cut") return [1 - u, 1 - u, u, u];
+  const w = warpU(u, h);
+  const a = fc(1 - w, kind), b = fc(w, kind);
+  return [a, a, b, b];
+}
+
+// The waveform view: a fixed VIEW_S seconds across 100% of the canvas, with the blend centred.
+// Changing the blend length only widens/narrows the middle band; A stays left, B stays right,
+// nothing rescales. One bar = BIN seconds for both the real waveform and the live preview.
+const VIEW_S = 64, VIEW_BARS = 600;
+function barSeconds() { return VIEW_S / VIEW_BARS; }
+let realRef = { key: null };   // tempo-glide length of the last real render of this join
+
+function buildPreview(env, h, L, glideOverride = null, spOverride = null) {
+  const sp = spOverride || env.spec, bin = env.bin_s, echo = sp.style === "echo";
+  const pk0 = displayPair();
+  const ref = pk0 && realRef.key && realRef.key.split("|")[0] === pk0 ? realRef : null;
+  const glide = glideOverride ?? (ref ? ref.glide : 0);
+  const pre = (VIEW_S - L) / 2;                            // view time where the blend starts
+  const BIN = barSeconds(), n = VIEW_BARS;
+  const ra = sp.ra ?? 1, rb = sp.rb ?? 1;                // native s per output s (time-stretch)
+  const aStart = echo ? sp.a_end : sp.a_end - L * ra;     // A's native time where the blend starts
+  const bm0 = sp.b_map && sp.b_map.length > 1 ? sp.b_map : null;   // exact anchors when beatmatched
+  const bNat = (t) => {
+    if (bm0) {
+      const u = t - pre, last = bm0[bm0.length - 1];
+      if (u >= last[0]) return last[1] + (u - last[0]);               // B alone at its own tempo
+      if (u <= 0) return bm0[0][1] + u * rb;
+      let lo = 0, hi = bm0.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (bm0[m][0] <= u) lo = m; else hi = m; }
+      const [t0, x0] = bm0[lo], [t1, x1] = bm0[hi];
+      return x0 + (u - t0) * (x1 - x0) / Math.max(1e-6, t1 - t0);
+    }
+    return t < pre + L + glide ? sp.b_in + (t - pre) * rb            // stretched through blend + glide
+                               : sp.b_in + (L + glide) * rb + (t - pre - L - glide);
+  };
+  const idx = (e, t) => Math.floor((t - e.t0) / bin);
+  const get = (e, k, f) => (k >= 0 && k < e[f].length ? e[f][k] : 0);
+  const sw = sp.style === "bassswap" ? h : sp.swap_at;
+  const beatFrac = Math.min(0.5, (sp.beat_len || 0.5) / Math.max(L, 0.1));
+  const kOut = idx(env.a, aStart - bin);
+  const aOutHi = get(env.a, kOut, "hi");
+  const fbk = sp.echo_feedback ?? 0.6;
+  const peaksP = new Float32Array(n), mixP = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let ea = 0, eb = 0, cnt = 0;
+    for (let t = i * BIN + bin / 2; t < (i + 1) * BIN; t += bin) {
+      let a2 = 0, b2 = 0;
+      if (t < pre) {                                          // A alone
+        const k = idx(env.a, aStart - pre + t);
+        a2 = get(env.a, k, "lo") ** 2 + get(env.a, k, "hi") ** 2;
+      } else if (t < pre + L) {                               // the blend
+        const u = (t - pre) / L;
+        const ka = idx(env.a, aStart + (t - pre) * ra), kb = idx(env.b, bNat(t));
+        let g, tailR = 0;
+        if (echo) {
+          const ag = fc(1 - Math.min(1, (t - pre) / Math.max(0.05, sp.echo_fade)), "s_curve");
+          tailR = 0.9 * Math.pow(1 - u, 1.2) / Math.sqrt(Math.max(0.05, 1 - fbk * fbk)) * aOutHi;
+          g = [ag, ag, 1, 1];
+        } else {
+          g = gainsAt(sp.style, u, h, sw, beatFrac, sp.fade_curve);
+        }
+        a2 = (g[0] * get(env.a, ka, "lo")) ** 2 + (g[1] * get(env.a, ka, "hi")) ** 2 + tailR ** 2;
+        b2 = (g[2] * get(env.b, kb, "lo")) ** 2 + (g[3] * get(env.b, kb, "hi")) ** 2;
+      } else {                                                // glide + B alone
+        const k = idx(env.b, bNat(t));
+        b2 = get(env.b, k, "lo") ** 2 + get(env.b, k, "hi") ** 2;
+      }
+      ea += a2; eb += b2; cnt++;
+    }
+    peaksP[i] = Math.min(1, LEVEL_GAIN * Math.sqrt((ea + eb) / Math.max(1, cnt)));
+    const A = Math.sqrt(ea), B = Math.sqrt(eb);
+    mixP[i] = A + B > 1e-9 ? B / (A + B) : null;
+  }
+  const off = aStart - pre;
+  const aView = (x) => x <= aStart ? x - off : pre + (x - aStart) / ra;
+  const bView = (x) => {                                   // inverse of bNat
+    if (bm0) {
+      const last = bm0[bm0.length - 1];
+      if (x >= last[1]) return pre + last[0] + (x - last[1]);
+      let lo = 0, hi = bm0.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (bm0[m][1] <= x) lo = m; else hi = m; }
+      const [t0, x0] = bm0[lo], [t1, x1] = bm0[hi];
+      return pre + t0 + (x - x0) * (t1 - t0) / Math.max(1e-6, x1 - x0);
+    }
+    const tg = sp.b_in + (L + glide) * rb;
+    return x <= tg ? pre + (x - sp.b_in) / rb : pre + L + glide + (x - tg); };
+  const RND = 0.002;                                       // envelope beats are rounded to 1 ms
+  const beats_a = env.a.beats.filter(([x]) => x - off >= 0 && x <= aStart + (echo ? 0 : L * ra) + RND).map(([x, d]) => [aView(x), d]);
+  const beats_b = env.b.beats.filter(([x]) => x >= sp.b_in - RND).map(([x, d]) => [bView(x), d]).filter(([v]) => v <= VIEW_S);
+  // beatmatched: inside the blend both tracks sit on one locked grid (as the render will draw it)
+  const bm = sp.beatmatch && sp.grid && sp.grid.length;
+  const grid = bm ? sp.grid.map(([t, d, w]) => [pre + t, d, w]) : [];
+  return { peaks: peaksP, mix: mixP, ov0: pre, ov1: pre + L, glideEnd: pre + L + glide,
+           beatsA: bm ? beats_a.filter(([t]) => t < pre) : beats_a,
+           beatsB: bm ? beats_b.filter(([t]) => t >= pre + L + glide) : beats_b,
+           grid, shift: 0, preview: true };
+}
+
+// The view shown when not dragging: the real rendered clip, positioned so its blend is
+// centred, with anything outside the clip filled from the same loudness envelopes.
+function composeView() {
+  if (previewState) return previewState;
+  if (!markers || !peaks) return null;
+  const L = markers.overlap_end - markers.overlap_start;
+  const glide = Math.max(0, markers.glide_end - markers.overlap_end);
+  const pre = (VIEW_S - L) / 2, shift = markers.overlap_start - pre;   // clip time = view time + shift
+  const env = envUsable() && !clipIsCandidate ? envCache.data : null;
+  const base = env ? buildPreview(env, Number($("ho").value), L, glide) : null;
+  const BIN = barSeconds(), n = VIEW_BARS;
+  const pk = base ? Float32Array.from(base.peaks) : new Float32Array(n);
+  const mix = base ? base.mix.slice() : new Array(n).fill(null);
+  for (let k = 0; k < n; k++) {
+    const t = (k + 0.5) * BIN + shift;
+    if (t < 0 || t >= markers.duration) continue;
+    const kk = Math.floor(t / BIN);
+    if (kk < peaks.length) pk[k] = peaks[kk];
+    const mv = markers.mix ? markers.mix[Math.min(markers.mix.length - 1, Math.floor(t / markers.duration * markers.mix.length))] : null;
+    if (mv != null) mix[k] = mv;
+  }
+  const inClip = (v) => v + shift >= 0 && v + shift <= markers.duration;
+  const mv = (list) => (list || []).map((b) => [b[0] - shift, ...b.slice(1)]).filter(([v]) => v >= 0 && v <= VIEW_S);
+  return {
+    peaks: pk, mix, ov0: pre, ov1: pre + L, glideEnd: pre + L + glide,
+    beatsA: [...mv(markers.beats_a), ...(base ? base.beatsA.filter(([v]) => !inClip(v)) : [])],
+    beatsB: [...mv(markers.beats_b), ...(base ? base.beatsB.filter(([v]) => !inClip(v)) : [])],
+    grid: mv(markers.grid), shift, preview: false,
+  };
+}
+
+function calibratePreview() { /* preview now uses true peak units — no scaling needed */ }
+
+// For a fade, lengthening the blend by Δ slides B's beats Δ earlier against A's. So the
+// length decides whether the two tracks' beats land together. Find lengths where they do.
+const ALIGN_TOL = 0.03;          // 30 ms: tighter than the beat tracker's 20 ms frames + ear
+function lowerBound(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; }
+function beatAlignment(env, L, spIn = null) {
+  const sp = spIn || env.spec;             // a fade's end points don't move with its length
+  const bs = env.b.beats.filter(([y]) => y >= sp.b_in && y <= sp.b_in + L);
+  const ys = bs.map((b) => b[0]), yd = bs.map((b) => b[1]);
+  const as = env.a.beats.filter(([x]) => x >= sp.a_end - L && x <= sp.a_end);
+  if (!as.length || !ys.length) return { hits: 0, n: 0, down: 0, nd: 0, mean: 1 };
+  const d0 = sp.b_in - sp.a_end + L;       // an A beat at x meets B's timeline at y = x + d0
+  let hits = 0, down = 0, nd = 0, sum = 0;
+  for (const [x, isDown] of as) {
+    const tgt = x + d0, k = lowerBound(ys, tgt);
+    let j = -1, off = 9;
+    for (const c of [k, k - 1]) if (c >= 0 && c < ys.length && Math.abs(ys[c] - tgt) < off) { off = Math.abs(ys[c] - tgt); j = c; }
+    if (isDown) nd++;
+    if (off <= ALIGN_TOL) { hits++; if (isDown && yd[j]) down++; }
+    sum += Math.min(off, 0.25);
+  }
+  return { hits, n: as.length, down, nd, mean: sum / as.length };
+}
+// Snapping only means something in a FADE between near-identical tempos: beatmatched joins are
+// locked by the engine, and tempos that differ drift in and out of phase within a fade.
+function fadeSnappable(sp) { return !!(sp && sp.style === "fade" && !sp.beatmatch && sp.tempo_gap_pct != null && sp.tempo_gap_pct <= 1.5); }
+// Alignment of a fade depends only on its fixed end points and L: memoise per 10 ms of L.
+let alignMemo = { env: null, map: new Map() };
+function alignAt(L, sp) {
+  const env = envCache.data;
+  if (alignMemo.env !== env) alignMemo = { env, map: new Map() };
+  const c = Math.round(L * 100), k = `${sp.a_end}|${sp.b_in}|${c}`;
+  let r = alignMemo.map.get(k);
+  if (!r) { r = beatAlignment(env, c / 100, sp); alignMemo.map.set(k, r); }
+  return r;
+}
+const SNAP_REACH = 0.12;
+function snapCandidate() { return fadeSnappable(specNow()); }
+function snapLength(L0) {
+  if (!$("snap").checked || !envUsable()) return { L: L0, snapped: false };
+  const sp0 = specAt(L0);
+  if (!fadeSnappable(sp0)) return { L: L0, snapped: false };
+  let best = null;
+  // reach ±0.12 s: at 120 BPM aligned lengths are 0.5 s apart, so the lines visibly slide between snaps
+  for (let c = Math.round(Math.max(2, L0 - SNAP_REACH) * 100); c <= Math.round(Math.min(60, L0 + SNAP_REACH) * 100); c++) {
+    const L = c / 100, sp = specAt(L);
+    if (!fadeSnappable(sp) || sp.a_end !== sp0.a_end || sp.b_in !== sp0.b_in) continue;   // same fade only
+    const a = alignAt(L, sp);
+    const score = a.hits + 3 * a.down - 2 * a.mean;   // downbeats first, then beats, then tightest
+    if (!best || score > best.score) best = { L, score, ...a };
+  }
+  if (best && best.n >= 3 && best.hits >= Math.max(3, 0.5 * best.n))
+    return { L: Math.round(best.L * 100) / 100, snapped: true, hits: best.hits, n: best.n };
+  return { L: L0, snapped: false };
+}
+
+// Beat-aligned isn't bar-aligned: B's "1" can land on A's "2". The magnet only reaches ±0.3 s,
+// so offer the nearest lengths (within ±4 s) where the downbeats meet as one-click choices.
+function downbeatLengths(L0, sp) {
+  if (!envUsable() || !fadeSnappable(sp)) return [];
+  const runs = [];
+  let run = null;
+  for (let c = Math.round(Math.max(2, L0 - 4) * 100); c <= Math.round(Math.min(60, L0 + 4) * 100); c++) {
+    const L = c / 100, spL = specAt(L);
+    const a = fadeSnappable(spL) && spL.a_end === sp.a_end && spL.b_in === sp.b_in ? alignAt(L, sp) : null;
+    const good = a && a.nd >= 2 && a.down >= Math.max(2, 0.6 * a.nd) && a.hits >= 0.6 * a.n;
+    if (good) {
+      const score = a.down / a.nd + a.hits / a.n - 2 * a.mean;
+      if (!run) runs.push((run = { L, score }));
+      else if (score > run.score) Object.assign(run, { L, score });
+    } else run = null;
+  }
+  const lens = runs.map((r) => Math.round(r.L * 100) / 100);
+  const below = lens.filter((L) => L < L0 - 0.02).pop(), above = lens.find((L) => L > L0 + 0.02);
+  const here = lens.find((L) => Math.abs(L - L0) <= 0.02);
+  return [below, here, above].filter((L) => L != null);
+}
+function renderDownbeatRow(sp) {
+  const row = $("downbeat-row"), L0 = Number($("len").value);
+  const lens = sp ? downbeatLengths(L0, sp) : [];
+  const html = !lens.length ? "" : `<span class="lbl">bars line up (downbeats meet) at:</span>` + lens.map((L) =>
+    Math.abs(L - L0) <= 0.02 ? `<b>${L.toFixed(2)} s ✓ now</b>` : `<button data-bar-len="${L}">${L.toFixed(2)} s</button>`).join("");
+  if (html === row.dataset.html) return;                 // unchanged: don't touch the DOM mid-drag
+  row.dataset.html = html;
+  row.hidden = !html;
+  row.innerHTML = html;
+  row.querySelectorAll("[data-bar-len]").forEach((b) => b.addEventListener("click", () => {
+    $("len").value = Number(b.dataset.barLen).toFixed(2);
+    lenChanged({ snap: false });
+    saveShape({ length_s: Number($("len").value), bars: null, fade_seconds: null });
+  }));
+}
+
+// What the planner will do at any slider length (join type, true length — whole bars when
+// beatmatched —, stretch, locked grid): one table per pair, fetched when the pair is shown,
+// so dragging needs no network at all. The table ignores handover (it never changes the plan).
+let lenTable = { pair: null, ver: null, segs: null }, lenToken = 0;
+async function loadLengths() {
+  const pair = displayPair();
+  if (!pair || (lenTable.pair === pair && lenTable.ver === version)) return;
+  const token = ++lenToken, c = currentAlt(), ver = version;
+  try {
+    const segs = await api(c ? `/api/candidate/lengths?slot=${alts.slot}&id=${encodeURIComponent(c.id)}` : `/api/transition/${cur}/lengths`);
+    if (token !== lenToken || pair !== displayPair()) return;
+    lenTable = { pair, ver, segs };
+    schedulePreview();
+  } catch (e) { /* the live fallback below still works */ }
+}
+function specAt(L) {
+  const pair = displayPair();
+  if (pair && lenTable.pair === pair && lenTable.segs && lenTable.segs.length) {
+    const segs = lenTable.segs;
+    let g = segs[segs.length - 1];
+    for (const x of segs) if (L < x.hi) { g = x; break; }
+    if (!g.stretch) return g.spec;
+    const r = Math.round(L), whole = Math.abs(L - Math.trunc(L) - 0.5) < 1e-9 && r % 2 ? r - 1 : r;   // Python's round-half-even
+    return { ...g.spec, length: Math.min(L, g.cap), reason: g.reason_tpl.replace("{L}", whole) };
+  }
+  return currentLiveSpec(L);
+}
+function specNow() { return specAt(Number($("len").value)); }
+
+// Fallback while the table loads: ask the planner for the exact values, throttled (not debounced).
+let liveSpec = { key: null, spec: null }, specTimer = null, specToken = 0, specBusy = false;
+function specUrl(h, L) {
+  const q = `&h=${h}&len=${L}`, c = currentAlt();
+  return c ? `/api/candidate/spec?slot=${alts.slot}&id=${encodeURIComponent(c.id)}${q}` : `/api/transition/${cur}/spec?x=1${q}`;
+}
+function currentLiveSpec(L) {
+  const pair = displayPair();
+  return pair && liveSpec.key === `${pair}|${L}` ? liveSpec.spec : null;
+}
+function requestLiveSpec() {
+  const pair = displayPair();
+  if (!pair || (lenTable.pair === pair && lenTable.segs)) return;   // the table answers instantly
+  loadLengths();
+  if (specBusy) { specTimer = true; return; }                      // one in flight; send the latest after
+  specBusy = true; specTimer = null;
+  const L = Number($("len").value), h = Number($("ho").value), token = ++specToken;
+  api(specUrl(h, L)).then((sp) => {
+    if (token === specToken && pair === displayPair()) { liveSpec = { key: `${pair}|${L}`, spec: sp }; schedulePreview(); }
+  }).catch(() => {}).finally(() => { specBusy = false; if (specTimer) requestLiveSpec(); });
+}
+
+// Slider input can arrive faster than the screen refreshes: draw at most once per frame.
+let frameQueued = false, wantPreview = false;
+function schedulePreview(start = false) {      // start: a slider/nudge changed; else refresh if showing
+  if (start) wantPreview = true;
+  if (frameQueued) return;
+  frameQueued = true;
+  requestAnimationFrame(() => {
+    frameQueued = false;
+    if (wantPreview || previewState) showPreview();
+    wantPreview = false;
+    updateLenLabel();
+  });
+}
+
+function showPreview() {
+  if (!envUsable()) return;                                        // envelope still loading
+  const sp = specNow();
+  const L = sp ? sp.length : Number($("len").value);
+  previewState = buildPreview(envCache.data, Number($("ho").value), L, sp ? sp.glide : null, sp);
+  drawWave();
+}
+
+// ---------------------------------------------------------------- per-join shape: handover + length
+// The sliders' values apply to whatever pair is on screen: the current join, or the
+// alternative being previewed. Switching alternatives keeps them (you hear each one with
+// the same handover/length); moving to another join loads that join's saved values.
+let shape = { handover: null, length_s: null };
+let sliderDragging = false;   // a render landing mid-drag must not wipe the live preview
+let renderPending = false;    // a slider release has asked for a new render
+function shapeFromJoin() {
+  const tr = S.plan.transitions[cur], ov = (tr && tr.override) || {};
+  shape = { handover: ov.handover ?? null, length_s: ov.length_s ?? null };
+}
+function shapeQuery() {
+  return (shape.handover != null ? `&h=${shape.handover}` : "") + (shape.length_s != null ? `&len=${shape.length_s}` : "");
+}
+
+function renderShape() {
+  const row = $("shape-row");
+  const tr = S.plan.transitions[cur];
+  const cand = currentAlt();
+  if (!cand && (!tr || appendMode)) { row.hidden = true; return; }
+  row.hidden = false;
+  const style = cand ? cand.style : tr.style;
+  const noBlend = style === "echo" || style === "cut";
+  const dflt = !cand && style === "bassswap" ? tr.swap_at : 0.5;
+  const ho = shape.handover ?? dflt;
+  $("ho").value = ho;
+  $("ho").disabled = noBlend;
+  const whose = cand ? ` — for “${cand.title}”` : "";
+  $("ho-val").textContent = noBlend ? `n/a for ${style}` : `${Math.round(ho * 100)}% of the blend${shape.handover == null ? " (default)" : ""}${whose}`;
+  const L = cand ? (clipBlendSeconds() ?? cand.blend) : (tr.T_overlap ?? tr.T);
+  const locked = cand ? !!(markers && !markers.preview && markers.grid && markers.grid.length) : !!tr.beatmatch;
+  $("len").value = Number(locked ? L : (shape.length_s ?? L)).toFixed(2);   // beatmatched: whole bars
+  renderDownbeatRow(specNow());
+  const bars = !cand && tr.beatmatch ? ` · ${tr.bars} bars` : "";
+  $("len-val").textContent = `${Number(L).toFixed(2)} s${bars}${shape.length_s == null ? " (auto)" : ""}` +
+    (shape.length_s != null && Math.abs(shape.length_s - L) > 2 ? ` — asked ${shape.length_s} s` : "");
+}
+function clipBlendSeconds() { return markers && !markers.preview ? markers.overlap_end - markers.overlap_start : null; }
+
+function saveShape(changes) {
+  renderPending = true;
+  for (const [k, v] of Object.entries(changes)) if (k in shape) shape[k] = v;
+  if (currentAlt()) {                         // previewing an alternative: re-render IT, save nothing yet
+    renderShape();
+    selectAlt(alts.sel, { playFromXfade: true });
+    return;
+  }
+  const tr = S.plan.transitions[cur];
+  if (!tr) return;
+  const values = { ...(tr.override || {}) };
+  for (const [k, v] of Object.entries(changes)) { if (v == null) delete values[k]; else values[k] = v; }
+  update({ override: { key: tr.key, values } }, { playFromXfade: true });   // saved per song pair, reused in every set
+}
+
+// ---------------------------------------------------------------- alternatives for the In deck
+let alts = null;        // {slot, mode, a, rejected, set, target, candidates, remaining, seen, sel}
+let altsToken = 0;
+let appendMode = false; // viewing the "next track" slot of a set that still has unused tracks
+
+async function loadAlts(slot, { more = false, autoSel = false } = {}) {
+  if (slot < 0 || !S.plan.order.length) return;
+  const token = ++altsToken;
+  const keep = more && alts && alts.slot === slot;
+  const seen = keep ? alts.seen : [];
+  let q;
+  try {
+    q = await api(`/api/candidates?slot=${slot}&limit=6&seen=${encodeURIComponent(seen.join(","))}`);
+  } catch (e) {
+    if (token === altsToken) $("clip-status").textContent = "error: " + e.message;
+    return;
+  }
+  if (token !== altsToken) return;
+  const start = keep ? alts.candidates.length : 0;
+  alts = { ...q, candidates: [...(keep ? alts.candidates : []), ...q.candidates],
+           seen: [...seen, ...q.candidates.map((c) => c.id)], sel: keep ? alts.sel : -1 };
+  if (autoSel && alts.candidates.length > start) selectAlt(start);
+  else { renderCard(); renderRating(); }
+}
+
+function selectAlt(i, { playFromXfade = false } = {}) {
+  if (!alts) return;
+  alts.sel = i;
+  renderCard(); renderRating();
+  const c = currentAlt();
+  if (c) {
+    loadClip({ url: candUrl(alts.slot, c.id), label: `alternative ${i + 1}: ${c.title}`, playFromXfade });
+    alts.candidates.slice(i + 1, i + 3).forEach((x) => warm(candWarmUrl(alts.slot, x.id)));   // warm the next ones
+  } else if (!appendMode) {
+    loadClip();
+  }
+}
+
+async function useAlt() {
+  const c = currentAlt();
+  if (!c) return;
+  const q = alts;
+  alts = null; altsToken++;
+  try {
+    const pairKey = `${q.a}>${c.id}`;
+    const heard = Object.fromEntries(Object.entries(shape).filter(([, v]) => v != null));
+    const body = { pick: { slot: q.slot, id: c.id, set: q.set, mode: q.mode, a: q.a, rejected: q.rejected,
+                           shown: q.candidates.map((x) => x.id) } };
+    if (Object.keys(heard).length)
+      body.override = { key: pairKey, values: { ...((S.state.overrides || {})[pairKey] || {}), ...heard } };
+    await update(body, { keepPairPosition: false, load: false });
+  } catch (e) {
+    $("clip-status").textContent = "error: " + e.message;
+    return;
+  }
+  if (q.mode === "append") {
+    if ((S.unplaced || []).length) return startAppend();
+    appendMode = false;
+    return go(S.plan.transitions.length - 1);
+  }
+  go(Math.min(q.slot + 1, S.plan.transitions.length - 1));   // the next join is new — review it
+}
+
+function startAppend() {
+  appendMode = true;
+  alts = null;
+  ["tr-card", "wave-card"].forEach((id) => { $(id).hidden = false; });
+  renderAll();
+  loadAlts(S.plan.order.length - 1, { autoSel: $("autoplay").checked });
+}
+
+function renderOverrides(tr) {
+  const ov = tr.override || {};
+  const styles = ["", "auto", "bassswap", "blend", "echo", "fade", "cut"];
+  const bars = ["", 1, 2, 4, 8, 16, 32];
+  const root = $("overrides");
+  root.innerHTML = `
+    <div class="param"><label>Style</label><select data-k="style">${styles.map((s) => `<option value="${s}" ${String(ov.style || "") === String(s) ? "selected" : ""}>${s || "(global)"}</option>`).join("")}</select></div>
+    <div class="param"><label>Overlap bars</label><select data-k="bars">${bars.map((s) => `<option value="${s}" ${String(ov.bars || "") === String(s) ? "selected" : ""}>${s || "(global)"}</option>`).join("")}</select></div>
+    <div class="param"><label>Fade seconds</label><input type="number" step="0.5" min="1" max="30" data-k="fade_seconds" value="${ov.fade_seconds ?? ""}" placeholder="${S.state.params.fade_seconds}"></div>
+    <div class="param"><label>A out shift (bars, ±0.5 ok)</label><input type="number" step="0.5" data-k="a_shift" value="${ov.a_shift ?? 0}"></div>
+    <div class="param"><label>B in shift (bars, ±0.5 ok)</label><input type="number" step="0.5" data-k="b_shift" value="${ov.b_shift ?? 0}"></div>
+    <div class="param"><label>Bass swap point</label><input type="number" step="0.05" min="0.1" max="0.9" data-k="bass_swap_at" value="${ov.bass_swap_at ?? ""}" placeholder="${S.state.params.bass_swap_at}"></div>`;
+  root.querySelectorAll("[data-k]").forEach((el) => el.addEventListener("change", () => {
+    const values = { ...(tr.override || {}) };     // keep keys this card doesn't show
+    root.querySelectorAll("[data-k]").forEach((e) => { if (e.value !== "") values[e.dataset.k] = e.value; else delete values[e.dataset.k]; });
+    update({ override: { key: tr.key, values } });
+  }));
+}
+
+// ---------------------------------------------------------------- audio + waveform
+async function loadClip({ force = false, url = null, label = null, track = false, playFromXfade = false } = {}) {
+  const trs = S.plan.transitions;
+  if (!url && (!trs.length || appendMode)) return;
+  const token = ++loadToken;
+  if (clipAbort) clipAbort.abort();
+  const ctl = clipAbort = new AbortController();
+  const wasPlaying = !audio.paused;
+  audio.pause();
+  if (!previewState) { markers = null; peaks = null; }
+  drawWave();
+  $("clip-status").textContent = previewState ? "rendering the new mix…" : "rendering transition…";
+  const t0 = performance.now();
+  try {
+    const src = url || `/api/transition/${cur}.wav?v=${version}${force ? "&f=" + Date.now() : ""}`;
+    const resp = await fetch(src, { signal: ctl.signal });
+    if (!resp.ok) throw new Error((await resp.json()).error);
+    const hdr = resp.headers.get("X-Markers");
+    const buf = await resp.arrayBuffer();
+    if (token !== loadToken) return;
+    if (audio.src && audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
+    audio.src = URL.createObjectURL(new Blob([buf], { type: track ? "audio/mpeg" : "audio/wav" }));
+    const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
+    const decoded = await ctx.decodeAudioData(buf.slice(0));
+    if (token !== loadToken) return;
+    markers = hdr ? JSON.parse(hdr) : { overlap_start: 0, overlap_end: 0, glide_end: 0, duration: decoded.duration };
+    peaks = computePeaks(decoded, Math.max(1, Math.round(decoded.duration / barSeconds())));
+    clipIsCandidate = !!track;                       // raw track previews (openers) have no envelope
+    if (!sliderDragging) previewState = null;   // real audio landed: replace the preview (not mid-drag)
+    renderPending = false;
+    if (!track) realRef = { key: envKey(), glide: Math.max(0, markers.glide_end - markers.overlap_end) };
+    drawWave();
+    if (!track) { loadEnvelope().then(drawWave); if (!sliderDragging) { renderShape(); loadLengths(); updateLenLabel(); } }   // fill the view beyond the clip
+    $("clip-status").textContent = `${label ? label + " · " : ""}ready (${((performance.now() - t0) / 1000).toFixed(1)} s)`;
+    if (playFromXfade) {                    // after a slider release: hear the new blend
+      audio.currentTime = Math.max(0, markers.overlap_start - 3);
+      audio.play().catch(() => {});
+    } else if ($("autoplay").checked || wasPlaying) {
+      audio.currentTime = track ? Math.min(20, decoded.duration / 4) : Math.max(0, markers.overlap_start - Math.min(6, markers.overlap_start));
+      audio.play().catch(() => {});
+    }
+    if (!url) prefetch(cur + 1);
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    if (token === loadToken) { renderPending = false; $("clip-status").textContent = "error: " + e.message; }
+  }
+}
+
+function prefetch(i) {
+  if (i < S.plan.transitions.length) warm(`/api/transition/${i}/markers?v=${version}`);
+}
+
+// Bars show loudness (RMS), not peaks: time-stretching smears drum transients, which shrinks
+// peaks but not loudness. Real waveform and live preview use this same measure and gain.
+const LEVEL_GAIN = 2.4;
+function computePeaks(buf, n) {
+  const ch0 = buf.getChannelData(0), ch1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : ch0;
+  const step = Math.floor(ch0.length / n), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0, c = 0;
+    for (let j = i * step; j < (i + 1) * step; j += 4) { const v = (ch0[j] + ch1[j]) / 2; s += v * v; c++; }
+    out[i] = Math.min(1, LEVEL_GAIN * Math.sqrt(s / Math.max(1, c)));
+  }
+  return out;
+}
+
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+function rgbOf(c) {
+  const m = c.match(/^#([0-9a-f]{6})$/i);
+  if (m) { const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  const r = c.match(/\d+(\.\d+)?/g);
+  return r ? r.slice(0, 3).map(Number) : [128, 128, 128];
+}
+function mixColor(ca, cb, f) {
+  return `rgb(${ca.map((v, i) => Math.round(v + (cb[i] - v) * f)).join(",")})`;
+}
+
+function drawWave() {
+  const c = $("wave"), g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const v = composeView();
+  if (!v) { g.fillStyle = cssVar("--muted"); g.font = "24px sans-serif"; g.fillText("rendering…", 20, H / 2); return; }
+  const X = (t) => (t / VIEW_S) * W;
+  const xo0 = X(v.ov0), xo1 = X(v.ov1);
+  g.fillStyle = cssVar("--xfade"); g.fillRect(xo0, 0, Math.max(2, xo1 - xo0), H);
+  g.fillStyle = cssVar("--xfade-edge"); g.fillRect(xo0 - 1, 0, 2, H); g.fillRect(xo1 - 1, 0, 2, H);
+  const ink = rgbOf(cssVar("--ink"));
+  for (const [t, down, who] of v.grid) {               // one locked beat grid — inside the blend only
+    if (who !== "both") continue;
+    g.fillStyle = `rgba(${ink.join(",")},${down ? 0.18 : 0.07})`;
+    g.fillRect(X(t) - (down ? 1 : 0.5), 0, down ? 2 : 1, H);
+  }
+  const ca = rgbOf(cssVar("--a")), cb = rgbOf(cssVar("--b"));
+  const n = v.peaks.length, bw = W / n, tickH = Math.round(H * 0.07);
+  for (let i = 0; i < n; i++) {
+    const x = i * bw, h = Math.max(1, v.peaks[i] * (H - 2 * tickH - 4) * 0.98);
+    const m = v.mix[i];
+    const f = m == null ? (x < xo0 ? 0 : 1) : m;
+    g.fillStyle = mixColor(ca, cb, f);
+    g.fillRect(x, (H - h) / 2, Math.max(1, bw - 1), h);
+  }
+  const tick = (t, down, top, col) => {
+    const hh = down ? tickH : Math.round(tickH * 0.5);
+    g.fillStyle = col;
+    g.fillRect(X(t) - (down ? 1 : 0.5), top ? 0 : H - hh, down ? 2 : 1, hh);
+  };
+  // beats that line up inside the blend: a dotted line joining A's tick (top) to B's (bottom);
+  // bold where both are downbeats. Same drawing for the preview and the rendered clip.
+  const joinLine = (t, major) => {
+    g.lineWidth = major ? 2.5 : 1; g.strokeStyle = major ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.4)";
+    g.beginPath(); g.moveTo(X(t), tickH); g.lineTo(X(t), H - tickH); g.stroke();
+  };
+  if (v.grid.length) {                                    // beatmatched: every beat is locked together
+    g.save(); g.setLineDash([4, 5]);
+    for (const [t, down, who] of v.grid) if (who === "both" && t >= v.ov0 - 0.01 && t <= v.ov1 + 0.01) joinLine(t, down);
+    g.restore();
+  } else {                                                // fades: show where the beats really meet
+    const EDGE = 0.005;                                   // beats sitting exactly on the band's edges count
+    const bIn = v.beatsB.filter(([t]) => t >= v.ov0 - EDGE && t <= v.ov1 + EDGE).sort((p, q) => p[0] - q[0]);
+    const bt = bIn.map((b) => b[0]);
+    g.save(); g.setLineDash([4, 5]);
+    for (const [t, aDown] of v.beatsA) {
+      if (t < v.ov0 - EDGE || t > v.ov1 + EDGE || !bt.length) continue;
+      const k = lowerBound(bt, t);
+      let j = -1, off = 9;
+      for (const c of [k, k - 1]) if (c >= 0 && c < bt.length && Math.abs(bt[c] - t) < off) { off = Math.abs(bt[c] - t); j = c; }
+      if (off > ALIGN_TOL) continue;
+      joinLine(t, aDown && bIn[j][1]);                    // both downbeats: the ones that matter
+    }
+    g.restore();
+  }
+  for (const [t, down] of v.beatsA) tick(t, down, true, cssVar("--a"));
+  for (const [t, down] of v.beatsB) tick(t, down, false, cssVar("--b"));
+  for (const [t, down, who] of v.grid) { if (who === "both") tick(t, down, true, cssVar("--a")); tick(t, down, false, cssVar("--b")); }
+  g.font = "bold 18px sans-serif"; g.fillStyle = cssVar("--xfade-edge");
+  const lab = `crossfade ${(v.ov1 - v.ov0).toFixed(1)} s`;
+  g.fillText(lab, Math.min(W - g.measureText(lab).width - 6, xo0 + 6), H - tickH - 8);
+  if (v.preview) {
+    g.font = "bold 20px sans-serif"; g.fillStyle = cssVar("--accent");
+    g.fillText("PREVIEW — let go of the slider to render the audio", W / 2 - 250, 26 + tickH);
+  } else if (markers) {
+    const px = X(audio.currentTime - v.shift);
+    if (px >= 0 && px <= W) { g.fillStyle = cssVar("--ink"); g.fillRect(px - 1, 0, 2, H); }
+  }
+  g.font = "20px sans-serif"; g.fillStyle = cssVar("--muted");
+  g.fillText("A", 8, 24 + tickH); g.fillText("B", W - 22, 24 + tickH);
+}
+
+$("wave").addEventListener("click", (e) => {
+  if (!markers) return;
+  const r = e.target.getBoundingClientRect();
+  const v = composeView();
+  const t = ((e.clientX - r.left) / r.width) * VIEW_S + (v ? v.shift : 0);
+  if (t < 0 || t > markers.duration) return;          // outside the rendered clip
+  audio.currentTime = t;
+  if (audio.paused) audio.play();
+});
+audio.addEventListener("timeupdate", () => {
+  drawWave();
+  if (markers) {
+    const rel = audio.currentTime - markers.overlap_start;
+    $("time").textContent = `${fmt(audio.currentTime)} / ${fmt(markers.duration)} · ${rel < 0 ? "overlap in " + (-rel).toFixed(1) + "s" : audio.currentTime <= markers.overlap_end ? "in overlap" : "past overlap"}`;
+  }
+});
+audio.addEventListener("play", () => ($("play").textContent = "Pause"));
+audio.addEventListener("pause", () => ($("play").textContent = "Play"));
+audio.addEventListener("ended", () => { if ($("autoadvance").checked) go(cur + 1); });
+
+function jumpToOverlap() { if (markers) { audio.currentTime = Math.max(0, markers.overlap_start - 4); audio.play(); } }
+
+// ---------------------------------------------------------------- navigation
+function go(i) {
+  if (!S || i < 0 || i >= S.plan.transitions.length) return;
+  const wasAppend = appendMode;
+  cur = i;
+  appendMode = false;
+  previewState = null;
+  shapeFromJoin();
+  alts = null; altsToken++;
+  if (wasAppend) renderAll(); else { renderCard(); renderOrder(); renderRating(); }
+  loadClip();
+  loadAlts(i);
+}
+
+function activeSet() { return S.active_set || "A"; }
+function ratings() { return S.pair_ratings || {}; }   // per song-pair, across all sets
+
+function renderSetDesc() {
+  const d = (S.sets || {})[activeSet()];
+  if (!d) { $("set-desc").textContent = ""; return; }
+  $("set-desc").textContent = `${d.name} v${d.version || 1} — ${d.arc_label}${d.start === "build" ? " · built by hand" : ""} · ${d.placed} tracks` +
+    `${d.edits ? ` · ${d.edits} edit${d.edits === 1 ? "" : "s"}` : ""}${S.last_edit ? ` · last: ${S.last_edit}` : ""}`;
+  $("undo-btn").disabled = !d.can_undo;
+  $("delete-btn").hidden = Object.keys(S.sets).length <= 1;
+}
+
+function rateColor(v) { return v >= 60 ? "var(--ok)" : v <= 35 ? "var(--warn)" : "var(--mid, #c79a1c)"; }
+
+// "gen'd 3 h ago": how old this set's order (or this medley build) is, so you know it's the latest
+function ago(ts) {
+  if (!ts) return "";
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 90) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400 * 2) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+// Sets and medleys are families of numbered versions: newest first, older ones indented under it.
+function familyOptions(items, label) {
+  const fams = new Map();
+  for (const it of items) (fams.get(it.family) || fams.set(it.family, []).get(it.family)).push(it);
+  let html = "";
+  for (const [fam, vs] of fams) {
+    vs.sort((a, b) => b.version - a.version);
+    vs.forEach((v, k) => {
+      const head = k === 0 ? `${esc(fam)} · v${v.version}` : `\u00a0\u00a0\u00a0\u00a0↳ v${v.version} (older)`;
+      html += `<option value="${esc(v.id)}"${v.title ? ` title="${esc(v.title)}"` : ""}>${head} · ${label(v)}</option>`;
+    });
+  }
+  return html;
+}
+function renderSets() {
+  const el = $("sets");
+  const sets = familyOptions(Object.values(S.sets || {}).map((d) => ({ ...d, family: d.family || d.name, version: d.version || 1, title: d.arc_label })),
+    (d) => `${d.placed} tracks · gen'd ${ago(d.created)}` + (d.updated && d.created && d.updated - d.created > 60 ? `, edited ${ago(d.updated)}` : ""));
+  const med = medleys.length ? `<optgroup label="Medleys (highlights only)">` +
+    familyOptions(medleys, (m) => `${m.songs} songs · ${fmtH(m.total_s)} · gen'd ${ago(m.created)}`) + `</optgroup>` : "";
+  el.innerHTML = `<optgroup label="Sets (full tracks)">${sets}</optgroup>` + med;
+  el.value = mstamp ? `medley:${mstamp}` : activeSet();
+}
+$("sets").addEventListener("change", async (e) => {
+  const id = e.target.value;
+  e.target.blur();                        // Space must keep toggling playback afterwards
+  if (id.startsWith("medley:")) { enterMedley(id.slice(7)); return; }
+  if (mstamp) { leaveMedley(); if (id === activeSet()) return; }
+  if (id === activeSet()) return;
+  cur = 0; picker = null; renderPicker();
+  await update({ active_set: id }, { keepPairPosition: false });
+});
+// Sets can be created outside this page (e.g. by Claude): pick them up when you come back to it.
+async function refreshSetsIfChanged() {
+  try {
+    const fresh = await api("/api/state");
+    const m = await api("/api/medleys");
+    const changed = JSON.stringify(Object.keys(fresh.sets || {})) !== JSON.stringify(Object.keys(S.sets || {})) ||
+      m.medleys.length !== medleys.length;
+    S.sets = fresh.sets; medleys = m.medleys; medRatings = m.ratings || {};
+    renderSets();                          // also refreshes the "gen'd … ago" ages
+    if (changed && mstamp) renderMedley();
+  } catch (e) { /* offline: keep what we have */ }
+}
+window.addEventListener("focus", refreshSetsIfChanged);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshSetsIfChanged(); });
+
+function newSetDialog() {
+  const bg = document.createElement("div");
+  bg.className = "modal-bg";
+  bg.innerHTML = `<div class="modal"><h2>New set</h2>
+    <div class="param"><label>Name</label><input id="ns-name" type="text" placeholder="e.g. Sunday session"></div>
+    <div class="param"><label>Start from</label><select id="ns-start">
+      <option value="flow">Best flow — free order, whatever mixes best</option>
+      <option value="energy">Energy arc — high → mid → chill</option>
+      <option value="genre">Genre waves — dance/party → rock → chill</option>
+      <option value="build">Empty — build it track by track with the picker</option></select></div>
+    <div class="param" id="ns-arc-wrap" hidden><label>Guide the picker's suggestions by</label><select id="ns-arc">
+      <option value="energy">Energy arc (high → chill)</option><option value="genre">Genre waves</option><option value="free">Best flow (no arc)</option></select></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="ns-cancel">Cancel</button><button class="primary" id="ns-ok">Create</button></div></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.querySelector("#ns-start").addEventListener("change", (e) => { bg.querySelector("#ns-arc-wrap").hidden = e.target.value !== "build"; });
+  bg.querySelector("#ns-cancel").addEventListener("click", close);
+  bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
+  bg.querySelector("#ns-ok").addEventListener("click", async () => {
+    const body = { new_set: { name: bg.querySelector("#ns-name").value, start: bg.querySelector("#ns-start").value, arc: bg.querySelector("#ns-arc").value } };
+    close();
+    cur = 0; picker = null; renderPicker();
+    $("clip-status").textContent = "building set…";
+    await update(body, { keepPairPosition: false });
+    if (!S.plan.order.length) openPicker(-1);
+  });
+  bg.querySelector("#ns-name").focus();
+}
+
+// ---------------------------------------------------------------- candidate picker
+let picker = null;   // {mode, slot, a, rejected, set, candidates, remaining, seen, playing}
+let pickerToken = 0;
+
+function candUrl(slot, id) { return `/api/candidate.wav?slot=${slot}&id=${encodeURIComponent(id)}&v=${version}${shapeQuery()}`; }
+
+// Warm-ups render + cache clips server-side but only download a tiny JSON reply, and at
+// most two run at once. (Unread 10 MB WAV bodies pin browser connections: Chrome allows
+// 6 per host, after which every request — approve, candidates, clips — queues forever.)
+const warmQueue = [];
+let warmActive = 0;
+function warm(url) {
+  if (warmQueue.includes(url)) return;
+  warmQueue.push(url);
+  pumpWarm();
+}
+function pumpWarm() {
+  while (warmActive < 2 && warmQueue.length) {
+    const url = warmQueue.shift();
+    warmActive++;
+    fetch(url).then((r) => r.text()).catch(() => {}).finally(() => { warmActive--; pumpWarm(); });
+  }
+}
+function candWarmUrl(slot, id) { return `/api/candidate/markers?slot=${slot}&id=${encodeURIComponent(id)}&v=${version}${shapeQuery()}`; }
+
+async function openPicker(slot, { more = false } = {}) {
+  const seen = more && picker ? picker.seen : [];
+  const token = ++pickerToken;
+  $("clip-status").textContent = "finding candidates…";
+  let q;
+  try {
+    q = await api(`/api/candidates?slot=${slot}&seen=${encodeURIComponent(seen.join(","))}`);
+  } catch (e) {
+    if (token === pickerToken) $("clip-status").textContent = "error: " + e.message;
+    return;
+  }
+  if (token !== pickerToken) return;          // cancelled or superseded meanwhile
+  picker = { ...q, seen: [...seen, ...q.candidates.map((c) => c.id)], playing: -1 };
+  renderPicker();
+  renderBuildCard();
+  $("picker").scrollIntoView({ block: "nearest" });
+  if (!q.candidates.length) { $("clip-status").textContent = "no candidates left"; return; }
+  if ($("autoplay").checked) hearCandidate(0); else $("clip-status").textContent = "";
+  if (q.mode !== "open") q.candidates.slice(1).forEach((c) => warm(candWarmUrl(q.slot, c.id)));   // pre-render the rest
+}
+
+function candBadges(c) {
+  const b = [`<span class="badge">${esc(c.source)}</span>`];
+  if (c.style) b.push(`<span class="badge ${c.beatmatch ? "ok" : ""}">${c.style} · ${c.blend}s blend</span>`);
+  if (c.stretch_pct != null) b.push(`<span class="badge ${c.stretch_pct <= S.state.params.max_stretch_pct ? "ok" : "warn"}">tempo Δ ${c.stretch_pct}%</span>`);
+  if (c.key_distance != null) b.push(`<span class="badge ${c.key_distance <= 1 ? "ok" : c.key_distance >= 3 ? "warn" : ""}">key ${c.key_distance <= 1 ? "compatible" : "distance " + c.key_distance}</span>`);
+  b.push(`<span class="badge">${esc(c.bucket || "")} · energy ${c.energy.toFixed(2)}</span>`);
+  if (c.rating != null) b.push(`<span class="badge" style="color:${rateColor(c.rating)};border-color:${rateColor(c.rating)};font-weight:700">★ you rated ${c.rating}</span>`);
+  return b.join("");
+}
+
+function renderPicker() {
+  const el = $("picker");
+  if (!picker) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  const by = Object.fromEntries(S.all_tracks.map((t) => [t.id, t]));
+  const nm = (id) => (by[id] ? esc(by[id].title) : "?");
+  const title = picker.mode === "open" ? "Pick an opener"
+    : picker.mode === "append" ? `Pick what follows “${nm(picker.a)}”`
+    : `Pick what follows “${nm(picker.a)}” — instead of “${nm(picker.rejected)}”`;
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h2 style="margin:0">${title}</h2>
+      <span class="small">${picker.remaining ? `${picker.remaining} more candidates after these` : "last candidates"}</span></div>
+    ${picker.candidates.map((c, i) => `<div class="cand ${picker.playing === i ? "playing" : ""}"><span class="num">${i + 1}</span>
+      <div><div class="t">${esc(c.title)} <span class="m">· ${esc(c.artist)}</span></div><div class="badges">${candBadges(c)}</div>${c.reason ? `<div class="small" style="color:var(--warn)">${esc(c.reason)}</div>` : ""}</div>
+      <span class="row"><button data-hear="${i}">▶ Hear</button><button class="primary" data-use="${i}">Use this</button></span></div>`).join("") || `<div class="small">No candidates left.</div>`}
+    <div class="row" style="margin-top:6px"><button id="pk-more" ${picker.remaining ? "" : "disabled"}>None of these → next 4</button>
+      <button id="pk-cancel">Cancel</button><span class="small">keys: 1–4 hear · Enter use the one playing · Esc cancel</span></div>`;
+  el.querySelectorAll("[data-hear]").forEach((b) => b.addEventListener("click", () => hearCandidate(Number(b.dataset.hear))));
+  el.querySelectorAll("[data-use]").forEach((b) => b.addEventListener("click", () => useCandidate(Number(b.dataset.use))));
+  $("pk-more").addEventListener("click", noneOfThese);
+  $("pk-cancel").addEventListener("click", cancelPicker);
+}
+
+function hearCandidate(i) {
+  if (!picker || !picker.candidates[i]) return;
+  const c = picker.candidates[i];
+  picker.playing = i;
+  renderPicker();
+  const open = picker.mode === "open";
+  loadClip({ url: open ? `/api/track/${encodeURIComponent(c.id)}/audio` : candUrl(picker.slot, c.id),
+             label: `candidate ${i + 1}: ${c.title}`, track: open });
+}
+
+async function useCandidate(i) {
+  if (!picker || !picker.candidates[i]) return;
+  const pk = picker, c = pk.candidates[i];
+  picker = null; renderPicker();
+  try {
+    await update({ pick: { slot: pk.slot, id: c.id, set: pk.set, mode: pk.mode, a: pk.a, rejected: pk.rejected,
+                           shown: pk.candidates.map((x) => x.id) } },
+                 { keepPairPosition: false, load: pk.mode === "replace" });
+  } catch (e) {
+    $("clip-status").textContent = "error: " + e.message;
+    return;
+  }
+  if ((S.unplaced || []).length) startAppend();                 // build loop continues in the In chooser
+  else go(Math.max(0, S.plan.transitions.length - 1));
+}
+
+async function noneOfThese() {
+  if (!picker) return;
+  fetch("/api/state", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passed: { slot: picker.slot, a: picker.a, rejected: picker.rejected, shown: picker.candidates.map((c) => c.id) } }) })
+    .then((r) => r.text()).catch(() => {});   // always drain: unread bodies pin connections
+  await openPicker(picker.slot, { more: true });
+}
+
+function cancelPicker() {
+  picker = null; pickerToken++; renderPicker(); renderBuildCard();
+  if (S.plan.transitions.length) loadClip();
+}
+
+async function rejectJoin() {
+  const key = displayedKey();
+  if (!key) return;
+  const cand = currentAlt();
+  S = await api("/api/state", { reject: { key } });
+  if (cand) {                                   // not this alternative: move to the next one
+    const next = alts.sel + 1;
+    if (next < alts.candidates.length) return selectAlt(next);
+    return loadAlts(alts.slot, { more: true, autoSel: true });
+  }
+  renderCard(); renderOrder(); renderRating();
+  loadAlts(cur, { autoSel: true });             // rejected the current join: hear the best alternative
+}
+
+async function approveJoin() {
+  const key = displayedKey();
+  if (!key) return;
+  if (picker) { picker = null; pickerToken++; renderPicker(); }
+  const cand = currentAlt();
+  S = await api("/api/state", { approve: { key } });
+  if (cand) return useAlt();
+  renderCard(); renderOrder(); renderRating();
+  if (cur + 1 < S.plan.transitions.length) go(cur + 1);
+}
+
+function renderBuildCard() {
+  const el = $("build-card");
+  const d = (S.sets || {})[activeSet()];
+  const un = (S.unplaced || []).length;
+  const show = d && un && !picker && !appendMode && (d.start === "build" || !S.plan.order.length);
+  el.hidden = !show;
+  if (!show) return;
+  const first = !S.plan.order.length;
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><span class="build-note"><b>Build mode</b> — ${S.plan.order.length} placed, ${un} to go.
+    Each step I rank the best tracks to come next; hear them and pick one.</span>
+    <button class="primary" id="build-go">${first ? "Pick an opener ▶" : "Pick the next track ▶"}</button></div>`;
+  $("build-go").addEventListener("click", () => (first ? openPicker(-1) : startAppend()));
+}
+
+let rateTimer = null;
+function renderRating() {
+  const trs = S.plan.transitions;
+  const key = displayedKey();
+  const cand = currentAlt();
+  $("approve-btn").textContent = cand ? "✓ Approve this one" : "✓ Approve";
+  $("reject-btn").textContent = cand ? "✗ Not this one → next" : "✗ Reject → alternatives";
+  $("approve-btn").disabled = $("reject-btn").disabled = !key;
+  if (!key) { $("rate-val").innerHTML = `<span class="lab">NO JOIN YET</span>–`; return; }
+  const v = ratings()[key];
+  $("rate").value = v ?? 50;
+  const val = $("rate-val");
+  val.innerHTML = `<span class="lab">${v == null ? "UNRATED" : (cand ? "RATED (THIS PAIR)" : "YOUR RATING")}</span>${v ?? "–"}`;
+  val.className = "val" + (v == null ? "" : v >= 60 ? " good" : v <= 35 ? " bad" : "");
+  const inPlan = trs.filter((t) => ratings()[t.key] != null).length;
+  $("rate-count").textContent = `${inPlan}/${trs.length} pairs in this set rated · ${Object.keys(ratings()).length} total`;
+}
+
+async function saveRating(value) {
+  const key = displayedKey();
+  if (!key) return;
+  const set = activeSet();
+  const pr = (S.pair_ratings ||= {});
+  if (value == null) delete pr[key]; else pr[key] = value;
+  const bucket = ((S.state.ratings ||= {})[set] ||= {});
+  if (value == null) delete bucket[key]; else bucket[key] = value;
+  renderRating();
+  clearTimeout(rateTimer);
+  rateTimer = setTimeout(() => {
+    fetch("/api/state", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: { set, key, value } }) })
+      .then((r) => r.text()).catch(() => {});   // always drain: unread bodies pin connections
+  }, 250);
+}
+
+function nextUnrated() {
+  const trs = S.plan.transitions;
+  for (let d = 1; d <= trs.length; d++) {
+    const i = (cur + d) % trs.length;
+    if (ratings()[trs[i].key] == null) return go(i);
+  }
+}
+
+function renderAll() {
+  if (appendMode && !(S.unplaced || []).length) appendMode = false;
+  const has = S.plan.transitions.length > 0 || (appendMode && S.plan.order.length > 0);
+  ["tr-card", "wave-card", "ov-card"].forEach((id) => { $(id).hidden = !has; });
+  if (!has) { $("pos").textContent = "0 / 0"; }
+  renderBuildCard();
+  $("folder").textContent = S.folder;
+  $("summary").textContent = `${S.plan.order.length} tracks · ${S.plan.transitions.filter((t) => t.beatmatch).length}/${S.plan.transitions.length} beatmatched · ${fmtH(S.plan.total_seconds)}`;
+  renderSets(); renderSetDesc(); renderCard(); renderOrder(); renderRender(); renderRating();
+}
+
+// ---------------------------------------------------------------- full render
+function renderRender() {
+  const j = S.render || {};
+  const card = $("render-card");
+  if (!j.status || j.status === "idle") { card.hidden = true; $("render-btn").disabled = S.plan.order.length < 2; return; }
+  card.hidden = false;
+  $("render-btn").disabled = j.status === "running";
+  if (j.status === "running") $("render-status").textContent = `Rendering… ${j.done}/${j.total} tracks${j.last ? " — " + j.last : ""}`;
+  else if (j.status === "done") { const f = j.path.split("/").pop(); $("render-status").innerHTML = `Saved <code>${esc(j.path)}</code> (+ .cue, .json). <a href="/api/mix/${f}" target="_blank">Open</a>`; }
+  else $("render-status").textContent = "Render failed: " + j.error;
+}
+
+async function pollRender() {
+  const j = await api("/api/render");
+  S.render = j; renderRender();
+  if (j.status === "running") setTimeout(pollRender, 2000);
+}
+
+$("render-btn").addEventListener("click", async () => {
+  if (!confirm(`Render the full ${fmtH(S.plan.total_seconds)} mix with the current settings? This takes a while.`)) return;
+  S.render = await api("/api/render", {}); renderRender(); pollRender();
+});
+
+// ---------------------------------------------------------------- wiring
+$("prev").addEventListener("click", () => go(cur - 1));
+$("next").addEventListener("click", () => go(cur + 1));
+$("play").addEventListener("click", () => (audio.paused ? audio.play() : audio.pause()));
+$("jump").addEventListener("click", jumpToOverlap);
+$("rerender").addEventListener("click", () => loadClip({ force: true }));
+$("reset-params").addEventListener("click", async () => { await update({ reset_params: true }); buildParams(); });
+$("rate").addEventListener("input", () => { $("rate-val").textContent = $("rate").value; });
+$("rate").addEventListener("change", () => saveRating(Number($("rate").value)));
+$("rate-clear").addEventListener("click", () => saveRating(null));
+$("next-unrated").addEventListener("click", nextUnrated);
+$("new-set").addEventListener("click", newSetDialog);
+$("undo-btn").addEventListener("click", () => { picker = null; renderPicker(); update({ undo: true }, { keepPairPosition: false }); });
+$("regen-btn").addEventListener("click", () => {
+  const d = S.sets[activeSet()];
+  if (!confirm(`Re-optimise the order of the ${d.placed} tracks in “${d.name}” (${d.arc_label}), using your ratings as weights? Tracks you removed stay out. You can undo this.`)) return;
+  picker = null; renderPicker(); cur = 0;
+  update({ regenerate: true }, { keepPairPosition: false });
+});
+$("rename-btn").addEventListener("click", () => {
+  const d = S.sets[activeSet()];
+  const name = prompt("Rename set", d.name);
+  if (name && name.trim()) update({ rename_set: { id: d.id, name } });
+});
+$("delete-btn").addEventListener("click", () => {
+  const d = S.sets[activeSet()];
+  if (!confirm(`Delete set “${d.name}”? Its order and edit history will be lost (ratings are kept).`)) return;
+  picker = null; renderPicker(); cur = 0;
+  update({ delete_set: d.id }, { keepPairPosition: false });
+});
+$("approve-btn").addEventListener("click", approveJoin);
+$("ho").addEventListener("input", () => { $("ho-val").textContent = `${Math.round($("ho").value * 100)}% of the blend`; schedulePreview(true); });
+["ho", "len"].forEach((id) => $(id).addEventListener("pointerdown", () => { sliderDragging = true; loadEnvelope(); loadLengths(); }));
+window.addEventListener("pointerup", () => {
+  if (!sliderDragging) return;
+  sliderDragging = false;
+  // released without changing anything: drop the preview (a change starts a render instead)
+  setTimeout(() => { if (!renderPending && previewState) { previewState = null; drawWave(); renderShape(); } }, 60);
+});
+$("ho").addEventListener("change", () => saveShape({ handover: Number($("ho").value) }));
+$("ho-reset").addEventListener("click", () => saveShape({ handover: null }));
+let lastSnap = false;
+function updateLenLabel() {
+  const L = Number($("len").value), sp = specNow();
+  let txt = `${L.toFixed(2)} s`;
+  if (sp) {
+    if (sp.beatmatch) txt = `${sp.length.toFixed(2)} s · beatmatched ${sp.bars} bars — beats locked`;
+    else if (sp.style === "fade") {
+      txt = `${sp.length.toFixed(2)} s · fade`;
+      if (fadeSnappable(sp) && envUsable()) {
+        const al = alignAt(sp.length, sp);
+        txt += ` · ${al.down}/${al.nd} downbeats, ${al.hits}/${al.n} beats aligned${lastSnap ? " ✓ snapped" : ""}`;
+      } else if (sp.tempo_gap_pct != null) {
+        txt += ` · tempos differ ${sp.tempo_gap_pct}% — beats only line up briefly in a fade`;
+      } else txt += " · no reliable beat grid — nothing to line up";
+    } else txt = `${sp.length.toFixed(2)} s · ${sp.style}`;
+  }
+  $("len-val").textContent = txt + (previewState ? " (renders on release)" : "");
+  renderDownbeatRow(sp);
+}
+function lenChanged({ snap = true } = {}) {
+  const raw = Number($("len").value);
+  const sn = snap ? snapLength(raw) : { L: raw, snapped: false };
+  if (sn.snapped && Math.abs(sn.L - raw) > 0.001) $("len").value = sn.L.toFixed(2);   // magnetic snap
+  lastSnap = sn.snapped;
+  schedulePreview(true);
+  requestLiveSpec();
+}
+$("len").addEventListener("input", () => lenChanged());
+let nudgeTimer = null;
+document.querySelectorAll("[data-nudge]").forEach((b) => b.addEventListener("click", async () => {
+  await loadEnvelope();
+  const v = Math.min(60, Math.max(2, Number($("len").value) + Number(b.dataset.nudge)));
+  $("len").value = v.toFixed(2);
+  lenChanged({ snap: false });                 // your nudge wins over the magnet
+  clearTimeout(nudgeTimer);                    // render once you pause
+  nudgeTimer = setTimeout(() => saveShape({ length_s: Number($("len").value), bars: null, fade_seconds: null }), 600);
+}));
+$("len").addEventListener("change", () => saveShape({ length_s: Number($("len").value), bars: null, fade_seconds: null }));
+$("len-reset").addEventListener("click", () => saveShape({ length_s: null }));
+$("reject-btn").addEventListener("click", rejectJoin);
+$("alts-btn").addEventListener("click", () => {
+  if (appendMode || !S.plan.transitions.length) return;
+  if (alts && alts.slot === cur && alts.candidates.length) selectAlt(0); else loadAlts(cur, { autoSel: true });
+});
+function applyParamsVisibility(show) {
+  document.body.classList.toggle("show-params", show);
+  $("toggle-params").textContent = show ? "⚙ Hide engine settings" : "⚙ Engine settings";
+  try { localStorage.setItem("automix.showParams", show ? "1" : "0"); } catch (e) {}
+}
+$("toggle-params").addEventListener("click", () => applyParamsVisibility(!document.body.classList.contains("show-params")));
+try { applyParamsVisibility(localStorage.getItem("automix.showParams") === "1"); } catch (e) { applyParamsVisibility(false); }
+$("clear-ov").addEventListener("click", () => update({ override: { key: S.plan.transitions[cur].key, values: {} } }));
+// Space is play/pause everywhere except where you type text (a focused slider, checkbox,
+// button or dropdown must not swallow it — nor "click" the button again on key-up).
+function typingIn(el) {
+  if (!el) return false;
+  if (el.isContentEditable || el.tagName === "TEXTAREA") return true;
+  return el.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "submit", "reset", "color"].includes(el.type);
+}
+function spaceIsPlayback(e) { return e.key === " " && !e.metaKey && !e.ctrlKey && !e.altKey && !typingIn(e.target) && !document.querySelector(".modal-bg"); }
+document.addEventListener("keydown", (e) => {
+  if (!spaceIsPlayback(e)) return;
+  e.preventDefault(); e.stopPropagation();
+  const a = mstamp ? $("m-audio") : audio;
+  if (!e.repeat) a.paused ? a.play() : a.pause();
+}, true);
+document.addEventListener("keyup", (e) => { if (spaceIsPlayback(e)) e.preventDefault(); }, true);
+document.addEventListener("keydown", (e) => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+  if (document.querySelector(".modal-bg")) return;
+  if (mstamp) { medleyKey(e); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;       // leave browser shortcuts alone
+  if (!picker && alts && alts.slot === viewSlot()) {
+    if (/^[1-6]$/.test(e.key) && Number(e.key) <= alts.candidates.length) { e.preventDefault(); selectAlt(Number(e.key) - 1); return; }
+    if ((e.key === "0" || e.key === "Escape") && alts.sel >= 0 && !appendMode) { e.preventDefault(); selectAlt(-1); return; }
+    if (e.key === "Enter" && alts.sel >= 0 && !["BUTTON"].includes(e.target.tagName)) { e.preventDefault(); approveJoin(); return; }
+  }
+  if (picker) {
+    if (/^[1-4]$/.test(e.key)) { e.preventDefault(); hearCandidate(Number(e.key) - 1); return; }
+    if (e.key === "Enter" && picker.playing >= 0 && e.target.tagName !== "BUTTON") { e.preventDefault(); useCandidate(picker.playing); return; }
+    if (e.key === "Escape") { e.preventDefault(); cancelPicker(); return; }
+  } else if ((e.key === "x" || e.key === "X") && !e.repeat) { e.preventDefault(); rejectJoin(); return; }
+  else if ((e.key === "a" || e.key === "A") && !e.repeat) { e.preventDefault(); approveJoin(); return; }
+  if (e.key === "ArrowLeft") { e.preventDefault(); go(cur - 1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); go(cur + 1); }
+  else if (e.key === "j" || e.key === "J") jumpToOverlap();
+  else if (e.key === "r" || e.key === "R") loadClip({ force: true });
+});
+
+// A track from later in the set is MOVED here: spell out the knock-on changes before you pick it.
+function movesNote(c) {
+  if (!c || !c.moves) return c ? `<span class="badge ok">unused track — nothing else changes</span>` : "";
+  const m = c.moves;
+  const joins = m.new_joins.map((j) => `${esc(j.a)} → ${esc(j.b)}${j.rating != null ? ` ★${j.rating}` : " (unrated)"}`).join("; ");
+  return `<div class="small" style="margin-top:6px;color:var(--warn, #e0a040)">⤴ moves up from #${m.from} · ${esc(m.displaced)} goes to #${m.displaced_to}` +
+    (joins ? ` · new joins: ${joins}` : "") + `</div>`;
+}
+// ================================================================ medley view
+let medleys = [], medRatings = {}, M = null, mstamp = null, mcur = 0, mPeaks = null, mPeakTok = 0;
+const BUCKET_COL = { dance: "--a", rock: "--high", chill: "--chill" };
+
+async function enterMedley(stamp) {
+  mstamp = stamp;
+  document.querySelector("main:not(#medley-main)").hidden = true;
+  $("medley-main").hidden = false;
+  for (const id of ["new-set", "toggle-params", "render-btn"]) $(id).hidden = true;
+  audio.pause();
+  try { localStorage.setItem("automix.medley", stamp); } catch (e) {}
+  $("m-status").textContent = "loading…";
+  M = await api(`/api/medley/${stamp}`);
+  const q = new URLSearchParams(location.search), want = Number(q.get("j"));
+  mcur = want > 0 ? Math.min(want - 1, M.joins.length - 1) : 0;
+  $("m-audio").src = M.mp3;
+  $("m-dl").href = M.mp3; $("m-dl").hidden = false;
+  renderSets(); renderMedley(); mgo(mcur, { play: false });
+}
+function leaveMedley() {
+  mstamp = null; M = null; $("m-audio").pause();
+  try { localStorage.removeItem("automix.medley"); } catch (e) {}
+  $("medley-main").hidden = true;
+  document.querySelector("main:not(#medley-main)").hidden = false;
+  for (const id of ["new-set", "toggle-params", "render-btn"]) $(id).hidden = false;
+  $("m-dl").hidden = true;
+  renderSets();
+}
+
+const mRatingKey = (j) => `${j.key}|${j.hash}`;
+function renderMedley() {
+  if (!M) return;
+  const st = M.stats, rated = M.joins.filter((j) => medRatings[mRatingKey(j)]).length;
+  const mv = medleys.find((m) => m.stamp === mstamp);
+  $("m-desc").textContent = `${M.title.replace(/ - \d+$/, "")}${mv ? " v" + mv.version : ""} — ${st.songs} songs, ${fmtH(st.total_s)}, each song at its highlight · built ${ago(M.created_ts)}` +
+    (M.excluded.length ? ` · left out: ${M.excluded.map((e) => `${e.title || e.track} (${e.reason.replace("_", " ")})`).join(", ")}` : "");
+  $("m-songs-meta").textContent = `${st.songs} · ${rated}/${M.joins.length} joins rated`;
+  $("m-songs").innerHTML = M.songs.map((s, i) => {
+    const ex = s.excerpt || {}, lab = (ex.labels || [])[0] || "highlight";
+    const col = cssVar(BUCKET_COL[s.bucket] || "--muted");
+    return `<li data-i="${i}" class="${i === mcur || i === mcur + 1 ? "cur" : ""}"><span class="n">${i + 1}</span>` +
+      `<span style="width:8px;height:22px;border-radius:2px;background:${col}"></span>` +
+      `<span><b>${esc(s.title)}</b><br><span class="small">${esc(s.artist)} · ${esc(lab)} ${fmt(ex.land_t)}–${fmt(ex.exit_t)}</span></span>` +
+      `<span class="small">${fmt(s.start)}</span></li>`;
+  }).join("");
+  $("m-songs").querySelectorAll("li").forEach((li) => li.addEventListener("click", () => {
+    const i = Number(li.dataset.i); mgo(Math.max(0, i - 1));      // the join that lands INTO this song
+  }));
+  drawStrip();
+}
+
+function mgo(i, { play = true } = {}) {
+  if (!M || i < 0 || i >= M.joins.length) return;
+  mcur = i;
+  const j = M.joins[i], A = M.songs[i], B = M.songs[i + 1];
+  const q = new URLSearchParams(location.search); q.set("medley", mstamp); q.set("j", i + 1);
+  history.replaceState(null, "", `?${q}`);
+  $("m-pos").textContent = `${i + 1} / ${M.joins.length}`;
+  const exA = A.excerpt || {}, exB = B.excerpt || {};
+  $("m-deck-a").innerHTML = `<div class="small">Out · plays its ${esc((exA.labels || ["highlight"])[0])}</div><div class="t">${esc(A.title)}</div><div class="ar">${esc(A.artist)}</div>` +
+    `<div class="facts">${A.bpm ? A.bpm.toFixed(1) + " BPM · " : ""}${esc(A.camelot || "")} · excerpt ${fmt(exA.lead_t)} → ${fmt(exA.land_t)} → ${fmt(exA.exit_t)}</div>`;
+  $("m-deck-b").innerHTML = `<div class="small">In · lands on its ${esc((exB.labels || ["highlight"])[0])} at ${fmt(exB.land_t)}</div><div class="t">${esc(B.title)}</div><div class="ar">${esc(B.artist)}</div>` +
+    `<div class="facts">${B.bpm ? B.bpm.toFixed(1) + " BPM · " : ""}${esc(B.camelot || "")} · lead: ${esc(exB.lead_type || "–")} · in the mix at ${fmt(j.land_out)}</div>`;
+  const status = j.status === "pass" ? `<span class="badge ok">checks pass</span>` :
+    j.status === "fail" ? `<span class="badge fail">failed: ${esc(j.fail.join(", "))}</span>` :
+    `<span class="badge warn">${esc(j.status || "unverified")}${j.warn.length ? ": " + esc(j.warn.join(", ")) : ""}</span>`;
+  const b = [
+    `<span class="badge">${esc((j.form || "").replace(/_/g, " "))}${j.variant ? " · " + esc(j.variant) : ""}</span>`,
+    `<span class="badge">${esc(j.tier || "")}</span>`,
+    `<span class="badge">B-in: ${esc(j.b_in || "")}</span>`,
+    `<span class="badge">${j.relation === "lock" ? "beatmatched" : j.relation === "double" ? "2:1 half-time" : "tempo change"}${j.stretch_pct != null && j.relation === "lock" ? ` ${Math.abs(j.stretch_pct).toFixed(1)} %` : ""}</span>`,
+    j.key_distance != null ? `<span class="badge ${j.key_distance > 2 ? "warn" : ""}">key distance ${j.key_distance}</span>` : "",
+    status,
+    j.land_err_ms != null ? `<span class="badge ${Math.abs(j.land_err_ms) <= 10 ? "ok" : "warn"}">landing ${j.land_err_ms > 0 ? "+" : ""}${j.land_err_ms.toFixed(1)} ms</span>` : "",
+    j.flams != null ? `<span class="badge ${j.flams ? "warn" : "ok"}">${j.flams} flams</span>` : "",
+    j.tries.length > 1 ? `<span class="badge" title="${esc(j.tries.map((t) => `${t.form}${t.fail && t.fail.length ? " ✗ " + t.fail.join(",") : " ✓"}`).join("  →  "))}">took ${j.tries.length} tries</span>` : "",
+  ];
+  const r = medRatings[mRatingKey(j)];
+  if (r) b.push(`<span class="badge ok">★ you rated ${r.value}</span>`);
+  $("m-badges").innerHTML = b.join("");
+  const bt = j.beat_s || 0.5, beats = (t) => { const x = (t - j.land_out) / bt; return (x > 0 ? "+" : "") + (Math.round(x * 4) / 4); };
+  $("m-events").innerHTML = j.events_mix.map(([t0, t1, txt]) =>
+    `<span class="when">${t1 > t0 + 0.01 ? `${beats(t0)} → ${beats(t1)}` : beats(t0)} beats</span><span>${esc(txt)}</span>`).join("");
+  $("m-rate").value = r ? r.value : 50;
+  $("m-rate-val").textContent = r ? r.value : "–";
+  $("m-songs").querySelectorAll("li").forEach((li) => li.classList.toggle("cur", [i, i + 1].includes(Number(li.dataset.i))));
+  const li = $("m-songs").querySelector(`li[data-i="${i + 1}"]`); if (li) li.scrollIntoView({ block: "nearest" });
+  loadPeaks();
+  if (play && $("m-autoplay").checked) mplayFrom(joinStart(j));
+  drawStrip();
+}
+const joinStart = (j) => Math.max(0, Math.min(j.region_out ?? j.land_out, j.land_out - 8) - 4);
+function mview(j) { const t0 = Math.max(0, joinStart(j) - 2); return [t0, j.land_out + 14]; }
+function mplayFrom(t) {
+  const a = $("m-audio");
+  const go = () => { a.currentTime = t; a.play().catch(() => {}); };
+  a.readyState >= 1 ? go() : a.addEventListener("loadedmetadata", go, { once: true });
+}
+async function loadPeaks() {
+  const j = M.joins[mcur], [t0, t1] = mview(j), tok = ++mPeakTok;
+  mPeaks = null; drawMWave();
+  try {
+    const p = await api(`/api/medley/${mstamp}/peaks?t0=${t0.toFixed(3)}&t1=${t1.toFixed(3)}&n=800`);
+    if (tok === mPeakTok) { mPeaks = p; drawMWave(); }
+  } catch (e) { $("m-status").textContent = "error: " + e.message; }
+}
+function drawMWave() {
+  const c = $("m-wave"), g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  if (!M) return;
+  const j = M.joins[mcur], [t0, t1] = mview(j), X = (t) => ((t - t0) / (t1 - t0)) * W;
+  const r0 = j.region_out ?? j.land_out, ca = rgbOf(cssVar("--a")), cb = rgbOf(cssVar("--b"));
+  // the composed region, and each move of the composition as a band
+  g.fillStyle = cssVar("--overlap"); g.fillRect(X(r0), 0, X(j.land_out) - X(r0), H);
+  g.font = "18px sans-serif"; let row = 0;
+  for (const [a, b, txt] of j.events_mix) {
+    if (b <= a + 0.01) continue;
+    g.fillStyle = "rgba(255,255,255,0.10)"; g.fillRect(X(a), 22 * row + 4, Math.max(2, X(b) - X(a)), 18);
+    g.fillStyle = cssVar("--ink"); g.fillText(txt.slice(0, 60), X(a) + 4, 22 * row + 19); row = (row + 1) % 3;
+  }
+  if (!mPeaks) { g.fillStyle = cssVar("--muted"); g.fillText("loading…", 20, H / 2); }
+  else {
+    const n = mPeaks.rms.length, bw = W / n, pk = Math.max(0.05, ...mPeaks.rms);
+    mPeaks.rms.forEach((v, i) => {
+      const t = mPeaks.t0 + ((i + 0.5) / n) * (mPeaks.t1 - mPeaks.t0);
+      const f = t < r0 ? 0 : t >= j.land_out ? 1 : (t - r0) / Math.max(0.01, j.land_out - r0);
+      const h = Math.max(1, (v / pk) * (H - 80));
+      g.fillStyle = mixColor(ca, cb, f); g.fillRect(i * bw, H - 8 - h, Math.max(1, bw - 0.5), h);
+    });
+  }
+  // B lands here
+  g.fillStyle = cssVar("--ok"); g.fillRect(X(j.land_out) - 1.5, 0, 3, H);
+  g.font = "bold 18px sans-serif"; g.fillText("B lands", X(j.land_out) + 6, H - 14);
+  const a = $("m-audio");
+  if (a.currentTime >= t0 && a.currentTime <= t1) { g.fillStyle = cssVar("--ink"); g.fillRect(X(a.currentTime) - 1, 0, 2, H); }
+}
+function drawStrip() {
+  const c = $("m-strip"), g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  if (!M) return;
+  const T = M.stats.total_s, X = (t) => (t / T) * W;
+  M.songs.forEach((s, i) => {
+    const e = M.songs[i + 1] ? M.songs[i + 1].start : T;
+    g.fillStyle = cssVar(BUCKET_COL[s.bucket] || "--muted");
+    g.globalAlpha = i === mcur || i === mcur + 1 ? 1 : 0.45 + 0.35 * (s.energy ?? 0.5);
+    const h = 14 + (H - 18) * (s.energy ?? 0.5);
+    g.fillRect(X(s.start ?? 0), H - h, Math.max(1, X(e) - X(s.start ?? 0) - 1), h);
+  });
+  g.globalAlpha = 1;
+  const j = M.joins[mcur]; g.fillStyle = cssVar("--ink"); g.fillRect(X(j.land_out) - 1, 0, 2, H);
+  const a = $("m-audio"); if (!a.paused || a.currentTime) { g.fillStyle = cssVar("--accent"); g.fillRect(X(a.currentTime) - 1, 0, 2, H); }
+}
+$("m-strip").addEventListener("click", (e) => {
+  if (!M) return;
+  const r = e.target.getBoundingClientRect(), t = ((e.clientX - r.left) / r.width) * M.stats.total_s;
+  let k = 0; M.joins.forEach((j, i) => { if (Math.abs(j.land_out - t) < Math.abs(M.joins[k].land_out - t)) k = i; });
+  mgo(k, { play: false }); mplayFrom(t);
+});
+$("m-wave").addEventListener("click", (e) => {
+  if (!M) return;
+  const r = e.target.getBoundingClientRect(), [t0, t1] = mview(M.joins[mcur]);
+  mplayFrom(t0 + ((e.clientX - r.left) / r.width) * (t1 - t0));
+});
+$("m-audio").addEventListener("timeupdate", () => {
+  if (!M) return;
+  const a = $("m-audio"), j = M.joins[mcur];
+  $("m-time").textContent = `${fmt(a.currentTime)} / ${fmt(M.stats.total_s)} · ${a.currentTime < j.land_out ? `lands in ${(j.land_out - a.currentTime).toFixed(1)} s` : "past the landing"}`;
+  // listening on: follow the mix into the next join's window
+  if ($("m-flow").checked && mcur + 1 < M.joins.length && a.currentTime >= joinStart(M.joins[mcur + 1])) mgo(mcur + 1, { play: false });
+  drawMWave(); drawStrip();
+});
+$("m-audio").addEventListener("play", () => ($("m-play").textContent = "Pause"));
+$("m-audio").addEventListener("pause", () => ($("m-play").textContent = "Play"));
+$("m-audio").addEventListener("canplay", () => ($("m-status").textContent = ""));
+$("m-play").addEventListener("click", () => { const a = $("m-audio"); a.paused ? a.play() : a.pause(); });
+$("m-jump").addEventListener("click", () => mplayFrom(joinStart(M.joins[mcur])));
+$("m-prev").addEventListener("click", () => mgo(mcur - 1));
+$("m-next").addEventListener("click", () => mgo(mcur + 1));
+async function mrate(v) {
+  const j = M.joins[mcur];
+  $("m-rate-val").textContent = v;
+  const r = await api(`/api/medley/${mstamp}/rate`, { index: mcur, value: v });
+  medRatings = r.ratings || {};
+  renderMedley(); mgo(mcur, { play: false });
+}
+$("m-rate").addEventListener("input", () => ($("m-rate-val").textContent = $("m-rate").value));
+$("m-rate").addEventListener("change", () => mrate(Number($("m-rate").value)));
+$("m-approve").addEventListener("click", async () => {
+  const cur = medRatings[mRatingKey(M.joins[mcur])];
+  await mrate(Math.max(80, cur ? cur.value : 0)); mgo(mcur + 1);
+});
+$("m-reject").addEventListener("click", async () => { await mrate(20); mgo(mcur + 1); });
+function medleyKey(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); mgo(mcur - 1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); mgo(mcur + 1); }
+  else if (e.key === "j" || e.key === "J") mplayFrom(joinStart(M.joins[mcur]));
+  else if ((e.key === "a" || e.key === "A") && !e.repeat) $("m-approve").click();
+  else if ((e.key === "x" || e.key === "X") && !e.repeat) $("m-reject").click();
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+(async () => {
+  S = await api("/api/state");
+  try { const m = await api("/api/medleys"); medleys = m.medleys; medRatings = m.ratings || {}; } catch (e) { medleys = []; }
+  const saved = Number(new URLSearchParams(location.search).get("t"));
+  if (saved > 0) cur = Math.min(saved - 1, Math.max(0, S.plan.transitions.length - 1));
+  shapeFromJoin();
+  buildParams(); renderAll(); loadClip();
+  if (!S.plan.order.length) openPicker(-1);
+  else if (S.plan.transitions.length) loadAlts(cur);
+  if (S.render && S.render.status === "running") pollRender();
+  // come back to the medley you were auditioning (link: ?medley=<stamp>&j=<join>)
+  let ms = new URLSearchParams(location.search).get("medley");
+  try { ms = ms || localStorage.getItem("automix.medley"); } catch (e) {}
+  if (ms && medleys.some((m) => m.stamp === ms)) enterMedley(ms);
+})();
+</script>
+</body>
+</html>

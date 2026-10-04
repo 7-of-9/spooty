@@ -38,6 +38,17 @@ describe('TrackService', () => {
     expect(service).toBeTruthy();
   });
 
+  it('forwards file-change and reconnect notices inside Angular without making an HTTP mutation', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const run = spyOn(TestBed.inject(NgZone), 'run').and.callThrough();
+    let notices = 0; const inAngular: boolean[] = [];
+    const subscription = service.coverageChanges$.subscribe(() => { notices++; inAngular.push(NgZone.isInAngularZone()); });
+    handlers['libraryCoverageChanged']({ id: 'new-scan', invalidated: false });
+    handlers['connect']({});
+    expect(notices).toBe(2); expect(inAngular).toEqual([true, true]); expect(run).toHaveBeenCalled(); http.expectNone(() => true);
+    subscription.unsubscribe();
+  });
+
   it('does not mark the live queue ready until fetchActive completes', () => {
     let ready = true;
     service.activeReady$.subscribe((value) => (ready = value));

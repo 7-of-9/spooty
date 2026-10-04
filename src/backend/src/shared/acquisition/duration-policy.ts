@@ -90,6 +90,7 @@ export class DurationCandidates {
       candidates.find(
         (c) =>
           youtubeVideoId(c.url) &&
+          c.identityAccepted !== false &&
           !rejected.some(
             (r) =>
               youtubeVideoId(r.url) === youtubeVideoId(c.url) &&

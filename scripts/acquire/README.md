@@ -14,7 +14,7 @@ nvm use                         # .nvmrc pins Node 20.19.4
 npm install
 npm run acquire -- --help
 npm run acquire -- doctor
-npm run acquire -- plan          # read-only, including restart/skip decisions
+npm run acquire -- plan          # offline inspection; may cache local ffprobe evidence
 npm run acquire -- run --limit 8 # at most eight NEW MP3s, then drain
 npm run acquire -- status
 ```
@@ -55,7 +55,7 @@ Never run a second CLI against a live owner.
 
 | Command | Meaning |
 | --- | --- |
-| `plan` (default) | Offline catalog/disk/journal inspection. `resume` gives saved, Missing, no-candidate, exhausted-error, ready and pending counts. No writes or YouTube work. |
+| `plan` (default) | Offline catalog/disk/journal inspection. `resume` gives saved, Missing, no-candidate, exhausted-error, ready and pending counts. May populate the private local duration cache; never changes media, queues or journals, and makes no Chrome/Spotify/YouTube requests. |
 | `doctor` | Local prerequisite and pinned-client checks; no network, queue or library writes. |
 | `run` | Resumable acquisition with exclusive ownership, checkpoints and graceful draining. |
 | `status` | Last run's JSON snapshot plus a bounded live-owner check. Snapshot age is explicit; no active ETA when ownership cannot be verified. Use `plan` for fresh physical counts. |
@@ -87,7 +87,7 @@ integers within the listed range.
 | `--window N` | run, pace | inherit / 8–240 | Download/video admissions per **ten minutes**, not tracks/second. |
 | `--batch-size N` | run | 8 / 1–8 | Maximum tracks in one yt-dlp batch. |
 | `--search-buffer N` | run | 192 / 1–1000000 | Backpressure threshold for validated candidates awaiting download. In-flight batches may complete above it. |
-| `--max-searches N` | run, plan | 10 / 1–50 | Ranked candidate results for a track query. Not a network retry count. Larger depth deliberately reopens exhausted selection. |
+| `--max-searches N` | run, plan | 10 / 1–50 | Ranked candidate results per query, with up to 3 automatic query variants. Not a network retry count. Larger depth deliberately reopens exhausted selection. |
 | `--network-retries N` | run | 5 / 0–20 | Additional workflow attempts after network failure; initial attempt plus N. Does not count individual internal yt-dlp HTTP requests. |
 | `--search-only` | run | off | Select and save candidate URLs, but do not download audio. Cannot combine with review actions or POT download configuration. |
 | `--retry-errors` | run, plan | off | Reopen exhausted network/operation failures. Does not reopen Missing or same-depth no-candidate records. |
@@ -97,6 +97,41 @@ integers within the listed range.
 | `--pot-recovery` | run, doctor | off | Enable the pinned local provider for cookie-bearing downloads, including post-block recovery. Does not start/install that provider. |
 | `--help`, `-h` | all | — | Help without state or network changes. |
 | `--version`, `-v` | alone | — | Package version without state or network changes. |
+
+### Automatic candidate discovery and evidence
+
+Both entry points use the same bounded discovery policy. The normal artist/title
+query runs first. If no candidate passes, try primary artist + title + cached
+album context (or an audio qualifier when album is unknown), then primary
+artist + title + official audio. At most **3 distinct queries**, **10 results
+per query by default**, or up to 30 returned result slots before video-ID
+deduplication. A successful first query does not incur the fallback searches.
+`--max-searches` controls depth **per query**, not query count or network retries.
+
+Candidates need compatible title/primary-artist metadata and no conflicting
+cover/live/remix/instrumental edition marker, as well as the unchanged duration
+window: ±5%, minimum 5s, maximum 20s. This metadata heuristic is not an audio
+fingerprint or proof of recording identity. Missing artist/title evidence fails
+closed. Credible candidates lacking duration receive at most **2** source
+metadata inspections per track across the whole search; these use the existing
+download admission/process gate with no audio download. Inspections never nest
+inside a held search slot. Network/owner/block failures stop fallback and remain
+operational outcomes; they are not manufactured search exhaustion.
+
+The latest bounded per-track report is saved atomically under
+`$ACQUIRE_STATE_PATH/search-diagnostics/<SHA256-song-key>.json` (normally
+`data/acquire/search-diagnostics/`). Reports contain public query/rank/video ID,
+title/channel, source target, candidate durations, duplicate flags, and explicit
+identity/duration rejection reasons—not raw extractor output, cookies or tokens.
+Web rows expose these through **Search evidence**. Older searches without reports
+say so rather than fabricating evidence. Latest reports replace earlier reports
+for that key; they are not a complete search-history archive.
+
+Installing this policy does **not** silently reopen accepted parked exceptions,
+resume paused queues, trim audio, or accept longer editions. Existing explicit
+retry/deeper-search controls remain the route to reopening exhausted work.
+The retained 9.44 MP3/min benchmark predates this query/identity enhancement;
+do not present it as a benchmark of the new policy.
 
 The current persisted profile is 4 download batches, 1 search batch,
 240 download admissions/ten minutes, batch 8 and buffer 192. Omitting pace flags
@@ -120,8 +155,28 @@ or wall-clock duration. Use `--minutes` as well when a time-bounded trial matter
 
 ## Resume and failure semantics
 
-1. A nonempty published local file wins: reuse it, fill missing playlist
-   destinations with hardlinks/copies, reconcile durable status, no YouTube call.
+Historical quality reviews use a shared source-identity lookup. The explicit
+`inspect-review` action and `--inspect-review` flag match old artist/title keys
+only through recorded Spotify IDs (catalog reference or audit evidence); they
+do not guess between same-named versions. `sourceReview.selection` in status
+reports mapped sources, unavailable saved-source/URL pairs and unbound legacy
+reviews, or a ledger error. Inspection remains metered metadata work, not a new
+download or automatic repair. Ordinary startup does not schedule it.
+`contentReviewPendingUnique` counts unresolved historical review keys, not newly
+failed MP3s or a freshly re-audited number of bad files.
+
+Duration-replacement bookkeeping retains the original review key and records
+source-specific evidence. Replacing one member of a multi-source review cannot
+resolve the whole group; a duration match never clears a performer/recording
+identity review. Unknown legacy bindings stay unresolved for explicit review.
+Reading the ledger or an offline plan never repairs files or changes reviews.
+
+1. Resolve the Spotify source identity, then inspect all matching local files.
+   A duration-compatible published file can fill missing playlist destinations
+   with hardlinks/copies, without a YouTube call. Known wrong-length files do
+   not count as saved or copyable for that source. Existing local files with
+   unknown source duration remain unverified, not certified or deleted; copying
+   them elsewhere requires source-duration verification first.
 2. A confirmed empty search is `missing`. An exhausted ranked search without
    acceptable duration is `no-candidate`, with its search depth saved.
 3. Both outcomes are fast-skipped on an ordinary same-depth rerun. “No
@@ -131,9 +186,43 @@ or wall-clock duration. Use `--minutes` as well when a time-bounded trial matter
 5. Network failures use the separate configured retry budget and delayed
    backoff/global cooldown. Other operational failures have a separate
    five-failure cap. Missing Spotify duration never bypasses validation.
-6. Published-file existence is authoritative across restarts. Deleting a
+6. Source-compatible published media is authoritative across restarts. Deleting a
    previously saved file makes its saved-state record eligible again; a parked
    no-candidate/error record stays parked until deliberately reopened.
+
+### Source identity and existing files
+
+CLI and web use the same Spotify-ID identity and local-media resolver. Artist
+and title are filename aliases, not proof that two Spotify sources are the same
+version. Different IDs can still share compatible audio, but no longer inherit
+each other's cached YouTube URL or live job state. Repeated playlist occurrences
+remain visible while acquisition is deduplicated by source ID.
+
+Existing files are preserved in place. New destinations include `[sp-SPOTIFY_ID]`
+so two same-named versions can coexist; an occupied incompatible destination
+gets a numbered suffix instead of being overwritten. Old filename-key missing,
+no-candidate and exhausted-error outcomes remain parked by default. An explicit
+new source decision takes precedence without deleting old history.
+
+The same protection applies when a file arrives **after** planning. Shared
+`publishMp3ForTrack` / `materializeForTrack` return the actual destination paths;
+web completion/playback and the CLI use those results. Already verified,
+unchanged local encodings remain reusable without new downloads. Unrelated
+occupied bytes are never silently accepted. Cross-device copies are staged
+privately before final publication; filesystems that cannot provide the required
+atomic no-overwrite link fail instead of exposing a partially copied final MP3.
+Source handoff checks use inode, size and content modification time (our own
+hardlinks change ctime); duration-cache keys also include ctime. These checks
+detect ordinary file replacement, not malicious timestamp-preserving tampering.
+
+`identityScheme: spotify-source-v1` means `uniqueSongs` counts Spotify source
+IDs (legacy name keys only where an ID is absent), not distinct recordings or
+physical MP3s. Do not compare that denominator directly with old name-key runs.
+`savedDurationMatched` and `savedUnverified` split `saved`; a duration match is
+not proof of exact recording identity. Local ffprobe evidence is cached under
+`data/media-duration-cache` using device, inode, size and modification/change
+times. Hardlinks share evidence; replaced files are checked again. A cold scan
+can take substantially longer than a warm one. No browser is used for this scan.
 
 `plan.resume.actionable` is the useful automatic-work count. Parked exceptions
 are disclosed separately and have no invented completion ETA. Disk GB counts
@@ -197,6 +286,21 @@ silently ignored. The CLI additionally supports smaller batches with
 
 Use absolute environment paths for predictable operation from any directory.
 Credentials are never CLI flags or JSON output.
+
+The website's **Download folder → Save & rescan** setting is shared with the
+CLI. It is stored atomically in `settings.json` beside `DB_PATH` (normally
+`data/settings.json`, ignored by Git), outside build output. A saved
+`downloadsPath` takes precedence over `DOWNLOADS_PATH`; that environment variable
+is the fallback when no location has been saved. Both entry points must use the
+same `DB_PATH` to share this setting. The CLI reads it again after taking its
+ownership lease and keeps that location for the run. UI saves refuse a live CLI,
+active web work or runnable unpaused queues; paused backlog is preserved.
+
+Choose an existing readable/writable absolute folder on the machine running
+Spooty, not a browser download preference. Saving changes scanning, local
+playback and future download destinations; it does not move, copy, delete or
+redownload media. The UI refreshes physical coverage immediately. Folder changes
+are accepted only from the loopback website/API using JSON requests.
 
 | Environment variable | Default in this checkout |
 | --- | --- |

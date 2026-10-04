@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, linkSync, symlinkSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { selectOutputs, verifyOutputs } from "./audit-output.mjs";
+import { openReviewsForOutputs, selectOutputs, verifyOutputs } from "./audit-output.mjs";
+
+test('benchmark reviews follow source IDs without losing legacy event or review history', () => {
+  const a = 'aaaaaaaaaaaaaaaaaaaaaa', b = 'bbbbbbbbbbbbbbbbbbbbbb';
+  const open = { key: 'artist - title', status: 'needs-review', catalogTrackId: a };
+  assert.deepEqual(openReviewsForOutputs([{ key: `spotify:${a}` }], [open]), [open.key]);
+  assert.deepEqual(openReviewsForOutputs([{ key: `spotify:${b}` }], [open]), []);
+  assert.deepEqual(openReviewsForOutputs([{ key: open.key }], [open]), [open.key]);
+  assert.deepEqual(openReviewsForOutputs([{ key: `spotify:${a}` }], [open, { ...open, status: 'resolved' }]), []);
+});
 
 test("audit counts only original publications in a completed half-open interval", () => {
   const start = Date.parse("2026-09-13T01:00:00Z"), end = start + 600000;

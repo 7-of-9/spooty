@@ -92,6 +92,9 @@ describe('spotify-playlist-v2', () => {
       [
         'spotify:track:aaaaaaaaaaaaaaaaaaaaaa',
         'spotify:track:bbbbbbbbbbbbbbbbbbbbbb',
+        'spotify:episode:cccccccccccccccccccccc',
+        'spotify:local:artist:album:title:180',
+        'spotify:episode:dddddddddddddddddddddd',
       ],
       false,
     );
@@ -122,5 +125,47 @@ describe('spotify-playlist-v2', () => {
     const result = await collectPlaylistV2TrackIds(async () => stuck);
     expect(result.trackIds.length).toBe(1);
     expect(result.truncated).toBe(true);
+  });
+
+  it('rejects a short response even when Spotify says truncated=false', async () => {
+    const result = await collectPlaylistV2TrackIds(async () => page(5, ['spotify:track:aaaaaaaaaaaaaaaaaaaaaa', 'spotify:track:bbbbbbbbbbbbbbbbbbbbbb'], false));
+    expect(result.truncated).toBe(true);
+  });
+
+  it('rejects a changed declared length between pages', async () => {
+    const result = await collectPlaylistV2TrackIds(async from => from === 0
+      ? page(2, ['spotify:track:aaaaaaaaaaaaaaaaaaaaaa'], true)
+      : page(3, ['spotify:track:bbbbbbbbbbbbbbbbbbbbbb', 'spotify:track:cccccccccccccccccccccc'], false, 1));
+    expect(result.truncated).toBe(true);
+  });
+
+  it('rejects a forward gap as well as repeated pages', async () => {
+    const result = await collectPlaylistV2TrackIds(async from => from === 0
+      ? page(2, ['spotify:track:aaaaaaaaaaaaaaaaaaaaaa'], true)
+      : page(2, ['spotify:track:bbbbbbbbbbbbbbbbbbbbbb'], false, 2));
+    expect(result.truncated).toBe(true);
+  });
+
+  it('rejects a missing count or malformed contents instead of inventing an empty playlist', async () => {
+    for (const malformed of [{}, { length: 0 }, { contents: { items: [], truncated: false } }]) {
+      expect((await collectPlaylistV2TrackIds(async () => malformed)).truncated).toBe(true);
+    }
+  });
+
+  it('distinguishes a valid empty response from a malformed response', async () => {
+    const result = await collectPlaylistV2TrackIds(async () => page(0, [], false));
+    expect(result.length).toBe(0);
+    expect(result.trackIds.length).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('rejects malformed/unknown content rows instead of treating them as removals', async () => {
+    for (const uri of ['', 'spotify:track:bad-id', 'spotify:unknown:example']) {
+      expect((await collectPlaylistV2TrackIds(async () => page(1, [uri], false))).truncated).toBe(true);
+    }
+  });
+
+  it('does not call a contradictory truncated response complete just because the count matches', async () => {
+    expect((await collectPlaylistV2TrackIds(async () => page(1, ['spotify:track:aaaaaaaaaaaaaaaaaaaaaa'], true))).truncated).toBe(true);
   });
 });

@@ -71,12 +71,23 @@ export async function collectPlaylistV2TrackIds(
   const pages: PlaylistV2Page[] = [];
   let from = 0;
   let collectedItems = 0;
+  let declaredLength: number | null = null;
   for (let i = 0; i < 80; i++) {
     const page = await fetchPage(from);
+    const invalidLength = typeof page.length === 'number' &&
+      (!Number.isSafeInteger(page.length) || page.length < 0 ||
+       (declaredLength !== null && page.length !== declaredLength));
     if (
-      from > 0 &&
-      typeof page.contents?.pos === 'number' &&
-      page.contents.pos < from
+      invalidLength ||
+      !Array.isArray(page.contents?.items) ||
+      // Only understood exclusions are safe. A malformed track row must not
+      // silently disappear and be mistaken for an intentional removal.
+      (page.contents?.items || []).some(item =>
+        !/^spotify:track:[A-Za-z0-9]{22}$/.test(item?.uri || '') &&
+        !/^spotify:episode:[A-Za-z0-9]{22}$/.test(item?.uri || '') &&
+        !/^spotify:local:.+/.test(item?.uri || '')) ||
+      (from === 0 && typeof page.length !== 'number') ||
+      (typeof page.contents?.pos === 'number' && page.contents.pos !== from)
     ) {
       const merged = mergePlaylistV2Pages(pages);
       return {
@@ -86,6 +97,7 @@ export async function collectPlaylistV2TrackIds(
         truncated: true,
       };
     }
+    if (typeof page.length === 'number') declaredLength = page.length;
     const items = page.contents?.items || [];
     pages.push(page);
     collectedItems += items.length;
@@ -96,7 +108,9 @@ export async function collectPlaylistV2TrackIds(
         length: merged.length,
         trackIds: merged.trackIds,
         name: merged.name,
-        truncated: !!page.contents?.truncated && collectedItems < merged.length,
+        // A false/omitted truncated flag cannot overrule an incomplete count.
+        // Non-track rows are counted too, before extracting track ids.
+        truncated: collectedItems !== merged.length || !!page.contents?.truncated,
       };
     }
     if (next <= from) {

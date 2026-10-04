@@ -5,12 +5,15 @@ import {
   Param,
   Res,
   StreamableFile,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { TrackService } from './track.service';
 import { createReadStream } from 'fs';
 import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { TrackEntity } from './track.entity';
+import { spotifySourceId } from '../shared/acquisition/source-id';
 
 @Controller('track')
 export class TrackController {
@@ -24,6 +27,14 @@ export class TrackController {
     return this.service.getActive();
   }
 
+  @Get('search-evidence')
+  searchEvidence(@Query('artist') artist: string, @Query('name') name: string, @Query('spotifyUrl') spotifyUrl?: string) {
+    if ([artist, name].some(value => typeof value !== 'string' || !value.trim() || value.length > 500))
+      throw new BadRequestException('artist and name must be nonempty strings of at most 500 characters');
+    if (spotifyUrl !== undefined && !spotifySourceId(spotifyUrl)) throw new BadRequestException('Invalid Spotify track URL');
+    return { report: this.service.searchEvidence(artist, name, spotifyUrl) };
+  }
+
   @Get('playlist/:id')
   getAllByPlaylist(@Param('id') playlistId: number): Promise<TrackEntity[]> {
     return this.service.getAllByPlaylist(playlistId);
@@ -35,10 +46,10 @@ export class TrackController {
     @Param('id') id: number,
   ): Promise<StreamableFile> {
     const track = await this.service.get(id);
-    const fileName = this.service.getTrackFileName(track);
-    const readStream = createReadStream(
-      this.service.getFolderName(track, track.playlist),
-    );
+    const media = await this.service.localMedia(track);
+    if (!media.local) throw new BadRequestException('No matching local audio for this Spotify track');
+    const fileName = media.local.split('/').pop();
+    const readStream = createReadStream(media.local);
     res.set({
       'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}`,
     });

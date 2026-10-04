@@ -1,6 +1,14 @@
 import { resolveYoutubeUrlForTrack } from './track-url-reuse';
 
 describe('resolveYoutubeUrlForTrack', () => {
+  it('does not reuse another Spotify version URL just because its artist and title match', async () => {
+    const track = { id: 2, artist: 'Artist', name: 'Track', spotifyUrl: 'spotify:track:1111111111111111111111' };
+    const sibling = { id: 1, artist: 'Artist', name: 'Track', spotifyUrl: 'spotify:track:2222222222222222222222', youtubeUrl: 'https://youtu.be/old-version' };
+    const search = jest.fn().mockResolvedValue('https://youtu.be/this-version');
+    const result = await resolveYoutubeUrlForTrack(track, [sibling], search);
+    expect(result).toEqual({ youtubeUrl: 'https://youtu.be/this-version', reused: false });
+    expect(search).toHaveBeenCalledTimes(1);
+  });
   it('reuses an existing youtubeUrl and does not call search', async () => {
     const track = { id: 2, artist: 'Jeff Beck', name: 'Shame' };
     const siblings = [

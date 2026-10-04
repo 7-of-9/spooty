@@ -67,8 +67,8 @@ describe('web search adapter uses shared CLI Transport', () => {
   });
   it('persists candidate depth and treats nonempty unsuitable results as exhausted selection', async () => {
     (f.transport.process as jest.Mock).mockImplementation(
-      async (_args, _kind, _timeout, line) => {
-        line(searchDocument('A B', [{ id: 'abcdefghijk' }], 25));
+      async (args, _kind, _timeout, line) => {
+        line(searchDocument(args.at(-1).replace(/^ytsearch\d+:/, ''), [{ id: 'abcdefghijk', duration: 900 }], 25));
         return { code: 0 };
       },
     );
@@ -84,8 +84,8 @@ describe('web search adapter uses shared CLI Transport', () => {
   });
   it('only explicit zero results are Missing', async () => {
     (f.transport.process as jest.Mock).mockImplementation(
-      async (_args, _kind, _timeout, line) => {
-        line(searchDocument('A B', []));
+      async (args, _kind, _timeout, line) => {
+        line(searchDocument(args.at(-1).replace(/^ytsearch\d+:/, ''), []));
         return { code: 0 };
       },
     );
@@ -98,6 +98,23 @@ describe('web search adapter uses shared CLI Transport', () => {
       f.service.findTrackOnYoutube({ ...song(), durationMs: null }),
     ).rejects.toThrow('Spotify source duration');
     expect(f.transport.process).not.toHaveBeenCalled();
+  });
+  it('uses album-context fallback and persists shared search evidence for web work', async () => {
+    let round = 0;
+    (f.transport.process as jest.Mock).mockImplementation(async (args, kind, _timeout, line) => {
+      expect(kind).toBe('search');
+      round++;
+      const query = args.at(-1).replace(/^ytsearch\d+:/, '');
+      if (round === 2) expect(query).toBe('Vincent The Plan Earth, Vol. 5');
+      line(searchDocument(query, round === 1 ? [{ id: 'abcdefghijk', title: 'Vincent The Plan', duration: 330 }] :
+        [{ id: 'cPT6rELtVVU', title: 'The Plan', channel: 'Vincent - Topic', duration: 254.021 }]));
+      return { code: 0 };
+    });
+    const track: any = { artist: 'Vincent', name: 'The Plan', durationMs: 254000, searchAlbum: 'Earth, Vol. 5' };
+    expect(await f.service.findTrackOnYoutube(track)).toBe(videoUrl('cPT6rELtVVU'));
+    expect(round).toBe(2);
+    expect(f.service.searchEvidence('vincent - the plan')).toMatchObject({ outcome: 'selected', uniqueCandidates: 2 });
+    expect(f.service.searchEvidence('not searched')).toBeNull();
   });
   it('rejects owner changes before a batch is admitted', async () => {
     jest

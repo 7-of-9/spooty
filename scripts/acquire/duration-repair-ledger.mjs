@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { atomicJson } from './historical-duration-audit.mjs';
 import { durationMatch } from './duration-policy.mjs';
+import { SourceReviewIndex, reviewSourceIds } from './review-identity.mjs';
 
 // This is review bookkeeping, not another work queue. Missing files are
 // discovered by the ordinary CLI catalog scan on restart.
@@ -52,21 +53,26 @@ export function normalizeDurationRepairStatuses(path) {
 
 export function recordDurationReplacement(path, song, actualDurationSeconds) {
   const ledger = JSON.parse(readFileSync(path, 'utf8'));
-  const entry = ledger.entries.findLast(item => item.key === song.key);
-  if (!entry?.durationDeletion) return false;
-  entry.durationReplacement = { at: new Date().toISOString(), file: song.source, actualDurationSeconds,
-    expectedDurationMs: song.durationMs, guard: 'spotify-v1', recordingIdentityProven: false };
-  const expected = entry.durationDeletion.expectedDurationsMs;
-  const deletedIds = new Set(entry.durationDeletion.files.map(file => file.fileId));
-  const noUnreplacedEvidence = (entry.durationAudit?.files || []).every(file => deletedIds.has(file.fileId));
-  const allMatch = noUnreplacedEvidence && expected.length > 0 && expected.every(ms => durationMatch(ms, actualDurationSeconds).ok);
-  if (entry.source === 'historical-duration-audit' && allMatch) {
-    entry.status = 'resolved';
-    entry.resolvedAt = entry.durationReplacement.at;
-    entry.resolution = 'Deleted duration failures replaced with a locally verified duration-matched MP3; recording identity was not certified.';
-  } else if (entry.source === 'historical-duration-audit') {
-    entry.status = 'needs-review';
-    entry.reason = 'A duration-checked replacement was published, but other edition or file evidence still needs review.';
+  const entries = new SourceReviewIndex(ledger.entries).forTrack(song).filter(entry => entry.durationDeletion);
+  if (!entries.length) return false;
+  if (!durationMatch(song.durationMs, actualDurationSeconds).ok) throw new Error('Replacement has not passed the source duration guard');
+  for (const entry of entries) {
+    entry.durationReplacement = { at: new Date().toISOString(), file: song.source, actualDurationSeconds,
+      expectedDurationMs: song.durationMs, sourceKey: song.key, guard: 'spotify-v1', recordingIdentityProven: false };
+    // Preserve independent replacement evidence for each member of a legacy group.
+    entry.durationReplacements = { ...entry.durationReplacements, [song.key]: entry.durationReplacement };
+    const expected = entry.durationDeletion.expectedDurationsMs;
+    const deletedIds = new Set(entry.durationDeletion.files.map(file => file.fileId));
+    const noUnreplacedEvidence = (entry.durationAudit?.files || []).every(file => deletedIds.has(file.fileId));
+    const allMatch = reviewSourceIds(entry).length <= 1 && noUnreplacedEvidence && expected.length > 0 && expected.every(ms => durationMatch(ms, actualDurationSeconds).ok);
+    if (entry.source === 'historical-duration-audit' && allMatch) {
+      entry.status = 'resolved';
+      entry.resolvedAt = entry.durationReplacement.at;
+      entry.resolution = 'Deleted duration failures replaced with a locally verified duration-matched MP3; recording identity was not certified.';
+    } else if (entry.source === 'historical-duration-audit') {
+      entry.status = 'needs-review';
+      entry.reason = 'A duration-checked replacement was published, but other edition or file evidence still needs review.';
+    }
   }
   atomicJson(path, ledger);
   return true;

@@ -1,0 +1,171 @@
+{
+ "id": "j01",
+ "a": "spotify:7gDgphzQU0urJU3AtoLJup",
+ "b": "spotify:15vNoLXoliW2XdTUDlNlWk",
+ "form": "drop_swap",
+ "variant": "L4.pulse-offbeat",
+ "tier": "smooth",
+ "loud": false,
+ "b_in": "swap",
+ "rel": {
+  "kind": "lock",
+  "ratio": 0.99189,
+  "a_ratio": 1,
+  "stretch_pct": -0.81,
+  "camelot": 2,
+  "chroma": 0.22,
+  "a_class": "locked",
+  "b_class": "locked"
+ },
+ "bpb": 4,
+ "a_ref": {
+  "exit_bar": 40,
+  "exit_t": 76.14,
+  "period_s": 0.472367
+ },
+ "b_ref": {
+  "land_bar": 80,
+  "land_t": 152.68,
+  "period_s": 0.476228
+ },
+ "clock": [
+  {
+   "m0": -28,
+   "m1": -24,
+   "kind": "a_fit",
+   "bpm0": 127.02,
+   "bpm1": 127.02
+  },
+  {
+   "m0": -24,
+   "m1": -16,
+   "kind": "ramp",
+   "bpm0": 127.02,
+   "bpm1": 125.99
+  },
+  {
+   "m0": -16,
+   "m1": 4,
+   "kind": "b_fit",
+   "bpm0": 125.99,
+   "bpm1": 125.99
+  }
+ ],
+ "span": {
+  "from": -28,
+  "to": 4
+ },
+ "clips": [
+  {
+   "id": "A",
+   "src": "a",
+   "stem": "mix",
+   "at": -28,
+   "len": 28,
+   "u0": -28,
+   "ratio": 1,
+   "warp": "r2",
+   "gain_db": 0
+  },
+  {
+   "id": "B",
+   "src": "b",
+   "stem": "mix",
+   "at": -16,
+   "len": 20,
+   "u0": -16,
+   "ratio": 1,
+   "warp": "native",
+   "gain_db": 0
+  }
+ ],
+ "moves": [
+  {
+   "type": "eq",
+   "clip": "B",
+   "band": "low",
+   "at": -16,
+   "len": 0,
+   "to_db": null,
+   "curve": "hold"
+  },
+  {
+   "type": "fade",
+   "clip": "B",
+   "at": -16,
+   "len": 15,
+   "from_db": -12,
+   "to_db": 0,
+   "shape": "pulse",
+   "pattern": "offbeat",
+   "floor_db": -12
+  },
+  {
+   "type": "eq",
+   "clip": "A",
+   "band": "mid_high",
+   "at": -16,
+   "len": 15,
+   "to_db": -8,
+   "curve": "lin"
+  },
+  {
+   "type": "eq",
+   "clip": "A",
+   "band": "low",
+   "at": -0.5,
+   "len": 0,
+   "to_db": null,
+   "curve": "hold"
+  },
+  {
+   "type": "fade",
+   "clip": "A",
+   "at": -1,
+   "len": 1,
+   "from_db": 0,
+   "to_db": null,
+   "shape": "cos"
+  },
+  {
+   "type": "swap",
+   "at": 0,
+   "out": [
+    "A"
+   ],
+   "in": [
+    "B"
+   ],
+   "band": "low",
+   "ms": 4
+  }
+ ],
+ "events": [
+  [
+   -16,
+   0,
+   "Dreaming breakdown in, pulsed on the offbeat"
+  ],
+  [
+   -16,
+   0,
+   "A mids/highs -8 dB (3A vs 5A)"
+  ],
+  [
+   -0.5,
+   0,
+   "air: A bass out"
+  ],
+  [
+   0,
+   0,
+   "land: Dreaming drop 2:32.68"
+  ]
+ ],
+ "fallback": [
+  "phrase_trade",
+  "roll_slam",
+  "cut_on_one"
+ ],
+ "hash": "7836be258b598683"
+}

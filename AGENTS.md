@@ -23,6 +23,19 @@ before acting; older 'live' checkpoints below are historical evidence only.
 
 ## Runtime
 
+- Shared candidate discovery now uses up to3 distinct queries and10 ranked
+  results per query by default (maximum30 result slots, deduplicated by video).
+  Keep title/artist/edition checks and the unchanged Spotify duration guard.
+  At most2 credible missing-duration candidates get paced metadata inspection.
+  Evidence: `data/acquire/search-diagnostics/`, shown in web **Search evidence**.
+  Do not automatically reopen parked outcomes when deploying this policy.
+
+- Active download folder is persisted through the web sidebar's **Download
+  folder → Save & rescan** in `data/settings.json` beside `DB_PATH`. On 15
+  September the user moved media to `/Users/dom/Desktop/mp3_downloads`, now the
+  saved active location. It overrides the `DOWNLOADS_PATH` fallback for web and
+  CLI; read `GET /api/settings/download-location` before scanning. Do not move
+  media back, overwrite this setting with the old env path, or resume queues.
 - Node **20.19.4** via nvm (system Node 26 breaks the stack).
 - Backend: NestJS watch on `:3000`. Frontend: `npx ng serve --proxy-config proxy.conf.json --host 127.0.0.1 --port 4200`.
 - Env: `DOWNLOADS_PATH=/Users/dom/src/spooty/downloads`, `STATIC_PLAYLISTS_PATH=/Users/dom/src/spooty/PLAYLISTS_2026-09-08/playlists`, `COOKIES_PATH=/Users/dom/src/spooty/cookies.txt`. SQLite **must not** live under `dist/` (`nest --watch` wipes it). Use `DB_PATH=/Users/dom/src/spooty/data/spooty.sqlite`.
@@ -58,6 +71,45 @@ audit/deletion evidence and current status; do not restart the healthy runner.
 Private playlists need **logged-in main Chrome**, not isolated MCP Chrome.
 
 - CDP: **only** `http://127.0.0.1:17331` (`scripts/cdp-keepalive.mjs`). Never a new DevTools WebSocket (Allow prompt). Never `Target.activateTarget`. One background tab via `GET /tab`, then `Page.navigate`.
+- This applies to ALL browser QA, not just Spotify. Direct Chrome/DevTools MCP
+  and the Chrome plugin are intentionally disabled in global Codex config.
+  Do not re-enable them or use Playwright/Puppeteer direct CDP as a fallback.
+  The singleton's `/health` is read-only; a disconnected bridge is not authority
+  to open another connection. Default startup opens no Chrome connection.
+  Reconnect only on explicit user authorization, once; see `scripts/CDP.md`.
+  Run `npm run test:cdp` after modifying the bridge. Keep this rule in future
+  session handovers; do not restart the healthy singleton at session start.
+  The five legacy direct-attachment/HTML diagnostic scripts listed in
+  `scripts/CDP.md` are retired, inert entry points. Never restore their socket
+  implementations. `scripts/cdp-boundary.test.mjs` checks for bypasses outside
+  the singleton; the supported CLI/web/session paths remain available.
+- The unified CUA runtime is native-app-only in global config; the Browser
+  plugin and generic Node REPL browser service are disabled too. Do not call
+  browser methods left exposed in an already-open session, including an
+  all-surface `cua.getState()` inventory. `npm run test:cdp-config` checks the
+  effective local future-session settings without creating a browser session.
+  It also checks live Codex-owned direct Chrome MCP processes: older sessions
+  can retain stale launch configuration even after global disablement. Do not
+  treat a saved config check alone as proof that all existing sessions comply.
+  Run that read-only preflight before browser work in each future session,
+  and again when prompts recur. It now checks Node script entry points too,
+  because a direct connector's process name can be only `node`. Never print
+  raw command arguments or historical bridge logs containing session endpoints.
+- `test:cdp-config` also checks the owner's recorded stale-parent incidents,
+  matching PID plus UTC start time. A known stale parent cannot pass simply
+  because its browser children have temporarily exited. This check reports a
+  remaining restart/reload requirement; it does not stop the parent or prevent
+  another application from connecting. Never silently clear the record or
+  restart unrelated work to obtain a green result.
+- The preflight also checks the **loaded environment of live Codex REPLs**.
+  On15September16 old generic/unified runtimes still had a trusted browser
+  service after saved native-only settings passed. Those tool runtimes were
+  closed without stopping parent agents, Chrome, the singleton or downloads.
+  Never invoke or relaunch a stale browser-enabled runtime. Native app control
+  remains configured for fresh sessions. Passing saved configuration alone is
+  insufficient; require the live-runtime check too. Do not print raw process
+  environments, which can contain secrets. Browser capability is a bypass risk,
+  not proof that a runtime caused a particular permission prompt.
 - Isolated Chrome cannot see private playlists. Do not spawn extra Chrome for scrape.
 - **Do not scrape playlist HTML for track lists.** Mint a logged-in web-player Bearer by hooking `fetch` in a background tab (`?spooty-token=1`), then call `https://spclient.wg.spotify.com/playlist/v2/playlist/{id}` and hydrate names via `metadata/4/track/{gid}`. CLI: `node scripts/spotify-session.mjs playlist <id>`. Cookie replay from Node is WAF-blocked (403 / "Unauthorized request"); official `api.spotify.com/v1` is a separate quota that 429s independently of spclient.
 - Spotify session HTTP is gated: concurrency 2, 250ms gap (`SPOTIFY_META_CONC` / `SPOTIFY_META_GAP_MS`). Honor 429 `Retry-After` capped at 60s. Skip metadata fetch for tracks already in the dump.
@@ -66,6 +118,31 @@ Private playlists need **logged-in main Chrome**, not isolated MCP Chrome.
 - Clicking a playlist auto-resyncs (10 min debounce) plus a 15 min timer. Do not nag that the dump count looks short.
 
 ## Library UI
+
+- Saved-file UI checks use `/api/library/view` and its scan-ID observations,
+  with the shared bounded `LibraryCoverageScan`/`LocalMediaIndex`. Keep metadata
+  browsable while probing; unchecked is not missing or ready to download. Poll
+  an existing scan instead of repeatedly launching complete scans. Folder and
+  membership changes invalidate old IDs. Real playback rechecks media. The
+  maintained index now listens for local media, metadata and workflow changes;
+  ordinary view reads reuse it, while `?refresh=1` explicitly rebuilds it.
+  `libraryCoverageChanged` notifies dashboards; affected sources get a new scan
+  generation. Respect `coverage.updates=manual` when watching fails or its root
+  moves. Do not claim continuous freshness without working notifications.
+
+- Shared source identity is `spotify:<track ID>`; filenames are compatibility
+  aliases, not job identity. Use `shared/acquisition/local-media.ts` for coverage,
+  reuse and playback. Never restore filename-only success checks or take the
+  first ID of a grouped legacy song. Keep mismatching files in place unless a
+  separate deletion is authorized; new version destinations must not overwrite
+  them. A twice-confirmed Spotify playlist removal is that authorization for
+  this playlist folder only: unlink its copies of the dropped tracks and drop
+  their queued work here. Other playlists' hardlinks stay. Old terminal journals stay parked until deliberately reopened. `plan`
+  now distinguishes duration-matched versus unverified local sources and may
+  populate the private fingerprint cache, but does not change media or queues.
+
+- Treat user-reported bugs as requests to implement and verify a scoped fix,
+  not just explain the cause. Preserve unrelated work, media and queue ownership.
 
 - Follow `OPERATOR_DASHBOARD_PRINCIPLES.md` as the normative product and UX
   contract; keep dashboard improvement active alongside the download batch.

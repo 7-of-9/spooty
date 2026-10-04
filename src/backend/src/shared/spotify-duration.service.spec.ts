@@ -113,4 +113,16 @@ describe('durable authenticated Spotify duration cache', () => {
     ).toBeNull();
     expect(spotifyTrackId(`https://attacker.test/track/${id}`)).toBeNull();
   });
+  it('provides album query context from a matching cache without another Spotify request', async () => {
+    const { service, session } = fixture();
+    writeFileSync(join(directory, `${id}.json`), JSON.stringify({ version: 1, spotifyId: id,
+      name: track.name, artist: track.artist, durationMs: 180000, album: 'Earth, Vol. 6' }));
+    const known: any = { ...track, durationMs: 180000 };
+    expect(await service.ensure(known)).toBe(180000);
+    expect(known.searchAlbum).toBe('Earth, Vol. 6');
+    const otherEdition: any = { ...track, durationMs: 200000 };
+    expect(await service.ensure(otherEdition)).toBe(200000);
+    expect(otherEdition.searchAlbum).toBeUndefined();
+    expect(session.getTrackDurationMetadata).not.toHaveBeenCalled();
+  });
 });

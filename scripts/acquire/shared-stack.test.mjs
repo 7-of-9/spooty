@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { Transport, verifyMp3 } from './transport.mjs';
 import { DurationCandidates, assertDuration } from './duration-policy.mjs';
-import { publishMp3, materialize } from './publication.mjs';
+import { publishMp3, materialize, publishMp3ForTrack, materializeForTrack, unpublishPlaylistCopies } from './publication.mjs';
 import { fileBase, songKey, database } from './catalog.mjs';
 import { optionDefinitions, commands } from './cli-options.mjs';
 const require = createRequire(import.meta.url);
@@ -15,6 +15,8 @@ test('CLI compatibility exports are the SAME shared implementations used by Nest
     [Transport, core('transport').Transport], [verifyMp3, core('transport').verifyMp3],
     [DurationCandidates, core('duration-policy').DurationCandidates], [assertDuration, core('duration-policy').assertDuration],
     [publishMp3, core('publication').publishMp3], [materialize, core('publication').materialize],
+    [publishMp3ForTrack, core('publication').publishMp3ForTrack], [materializeForTrack, core('publication').materializeForTrack],
+    [unpublishPlaylistCopies, core('publication').unpublishPlaylistCopies],
     [fileBase, core('identity').fileBase], [songKey, core('identity').songKey],
   ]) assert.equal(actual, expected);
 });

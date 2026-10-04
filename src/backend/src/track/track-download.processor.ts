@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { TrackService } from './track.service';
 import { TrackEntity } from './track.entity';
 import { webWorkerConcurrency } from '../shared/youtube-ingest-profile';
+import { WorkerActivity } from './worker-activity';
 import {
   youtubeRetryAttempt,
   youtubeRetryCookiesFirst,
@@ -20,11 +21,16 @@ const DOWNLOAD_CONCURRENCY = webWorkerConcurrency('download');
   lockDuration: 15 * 60 * 1000,
 })
 export class TrackDownloadProcessor extends WorkerHost {
+  readonly activity = new WorkerActivity();
   constructor(private readonly trackService: TrackService) {
     super();
   }
 
   async process(job: Job<TrackEntity, void>): Promise<void> {
+    return this.activity.run(() => this.processTrack(job));
+  }
+
+  private async processTrack(job: Job<TrackEntity, void>): Promise<void> {
     // Gaps and cool-off live in YoutubePace; search and download use separate slot pools.
     await this.trackService.downloadFromYoutube(
       job.data,

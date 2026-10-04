@@ -57,6 +57,14 @@ import { AcquisitionOwnerGuard } from './shared/acquisition-owner';
         connection: {
           host: configService.get<string>(EnvironmentEnum.REDIS_HOST),
           port: configService.get<number>(EnvironmentEnum.REDIS_PORT),
+          // Bound Bull's blocking marker wait even if Redis disconnects while
+          // reconnecting (ioredis.disconnect may have no new close event to
+          // settle that command). Finite waits keep their server timeout +
+          // grace; 10s is the fallback for an indefinite/offline blocking wait.
+          // This is NOT commandTimeout: active jobs and their completion writes
+          // still drain normally, with no deadline that aborts acquisition.
+          blockingTimeout: 10000,
+          blockingTimeoutGrace: 500,
         },
       }),
       inject: [ConfigService],

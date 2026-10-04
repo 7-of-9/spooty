@@ -7,9 +7,16 @@ import { promisify, parseArgs } from "node:util";
 import { resolve, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquisitionBenchmark } from "./report.mjs";
+import { SourceReviewIndex } from './review-identity.mjs';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+export function openReviewsForOutputs(outputs, entries) {
+  const index = new SourceReviewIndex(entries);
+  return [...new Set(outputs.flatMap(output => index.forTrack(output)
+    .filter(entry => entry.status !== 'resolved').map(entry => entry.key)))];
+}
 
 export function selectOutputs(events, from, to, now = Date.now()) {
   const start = Date.parse(from), end = Date.parse(to);
@@ -98,7 +105,6 @@ async function main() {
   const exclusions = matched.benchmarkExclusions.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start);
   const review = JSON.parse(readFileSync(join(state, "quality-review.json"), "utf8"));
   if (!Array.isArray(review.entries)) throw new Error("Invalid recording-review ledger");
-  const keys = new Set(outputs.map((e) => e.key));
   const verified = await verifyOutputs(outputs, join(root, "downloads"));
   if (!values.details) delete verified.files;
   const minutes = (end - start) / 60000;
@@ -109,7 +115,7 @@ async function main() {
     rateLimitTrips: events.filter((e) => e.type === "block" && e.t >= start && e.t < end).length,
     retries: events.filter((e) => e.type === "retry" && e.t >= start && e.t < end).length,
     auditedAt: new Date().toISOString(), ...verified,
-    knownOpenRecordingReviewsInWindow: review.entries.filter((e) => keys.has(e.key) && e.status !== "resolved").map((e) => e.key),
+    knownOpenRecordingReviewsInWindow: openReviewsForOutputs(outputs, review.entries),
     scope: "Independent current filesystem MP3 codec and positive duration; not recording identity. Counts only original publication events, not review staging or repairs. No YouTube work or file mutation by this audit.",
   };
   console.log(JSON.stringify(result));

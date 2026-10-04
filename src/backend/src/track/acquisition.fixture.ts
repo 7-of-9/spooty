@@ -5,6 +5,7 @@ import { UtilsService } from '../shared/utils.service';
 import { TrackService } from './track.service';
 import { TrackEntity, TrackStatusEnum } from './track.entity';
 import { WebWorkStore } from '../shared/acquisition/web-work-store';
+import { sourceKey } from '../shared/acquisition/identity';
 
 export function trackFixture() {
   const web = webAdapterFixture();
@@ -16,7 +17,7 @@ export function trackFixture() {
         ? downloads
         : key === 'FORMAT'
           ? 'mp3'
-          : undefined,
+          : key === 'DB_PATH' ? join(web.root, 'data/spooty.sqlite') : undefined,
   };
   const utils = new UtilsService(config as any);
   const row: TrackEntity = {
@@ -40,7 +41,11 @@ export function trackFixture() {
       return { ...row };
     }),
   };
-  const search = { add: jest.fn().mockResolvedValue({}) };
+  const queueRead = jest.fn().mockResolvedValue([]);
+  const search = {
+    add: jest.fn().mockResolvedValue({}),
+    client: Promise.resolve({ eval: queueRead }),
+  };
   const download = { add: jest.fn().mockResolvedValue({}) };
   const metadata = { ensure: jest.fn().mockResolvedValue(180000) };
   const service = new TrackService(
@@ -54,7 +59,7 @@ export function trackFixture() {
   );
   service.io = { emit: jest.fn() } as any;
   const journal = new WebWorkStore(join(web.state, 'work.sqlite'));
-  const key = utils.trackFileKey(row.artist, row.name);
+  const key = sourceKey(row);
   return {
     ...web,
     service,
@@ -62,6 +67,7 @@ export function trackFixture() {
     row,
     repository,
     search,
+    queueRead,
     download,
     metadata,
     journal,

@@ -5,6 +5,7 @@ import * as childProcess from 'node:child_process';
 import { copyFileSync } from 'fs';
 import { webAdapterFixture, videoUrl } from './acquisition/web-adapter.fixture';
 import { DURATION_REJECTED } from './acquisition/duration-policy';
+import { sourceFileBase } from './acquisition/identity';
 const ID3 = require('node-id3');
 
 describe('shared web download and atomic publication', () => {
@@ -120,13 +121,47 @@ describe('shared web download and atomic publication', () => {
     ).rejects.toThrow('MP3 tags');
     expect(existsSync(target)).toBe(false);
   });
-  it('fast-skips existing media without a new subprocess or tag rewrite', async () => {
+  it('skips existing media only after a duration check, without a new network process or tag rewrite', async () => {
     const target = join(f.root, 'existing.mp3');
     writeFileSync(target, 'historical');
-    await f.service.downloadAndFormat(track('abcdefghijk'), target);
+    expect(await f.service.downloadAndFormat(track('abcdefghijk'), target)).toEqual({ path: target, created: false });
     expect(f.transport.process).not.toHaveBeenCalled();
-    expect(core.verifyMp3).not.toHaveBeenCalled();
+    expect(core.verifyMp3).toHaveBeenCalledTimes(1);
+    expect(ID3.write).not.toHaveBeenCalled();
     expect(readFileSync(target, 'utf8')).toBe('historical');
+  });
+
+  it('publishes to a source-specific alternative when an occupied file fails the duration check', async () => {
+    const target = join(f.root, 'occupied.mp3');
+    writeFileSync(target, 'wrong-length media');
+    (core.verifyMp3 as jest.Mock).mockResolvedValueOnce(600).mockResolvedValue(180);
+    (f.transport.process as jest.Mock).mockImplementation(async (args, _kind, _timeout, line) => {
+      line(output(args, 'abcdefghijk'));
+      return { code: 0 };
+    });
+    const song = { ...track('abcdefghijk'), spotifyUrl: 'spotify:track:1111111111111111111111' };
+    const result = await f.service.downloadAndFormat(song, target);
+    expect(result).toEqual({ path: join(f.root, sourceFileBase(song, 2) + '.mp3'), created: true });
+    expect(readFileSync(result.path, 'utf8')).toBe('fixture-mp3');
+    expect(readFileSync(target, 'utf8')).toBe('wrong-length media');
+    expect(f.transport.process).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports each actual destination when duplicate playlist occurrences collide differently', async () => {
+    const first = join(f.root, 'first.mp3'), second = join(f.root, 'second.mp3');
+    const song = { ...track('abcdefghijk'), spotifyUrl: 'spotify:track:1111111111111111111111' };
+    (f.transport.process as jest.Mock).mockImplementation(async (args, _kind, _timeout, line) => {
+      line(output(args, 'abcdefghijk'));
+      return { code: 0 };
+    });
+    (ID3.write as jest.Mock).mockImplementation(() => { writeFileSync(first, 'race winner'); return true; });
+    const result = await Promise.all([f.service.downloadAndFormat({ ...song }, first), f.service.downloadAndFormat({ ...song }, second)]);
+    expect(result).toEqual([
+      { path: join(f.root, sourceFileBase(song, 2) + '.mp3'), created: true },
+      { path: second, created: true },
+    ]);
+    expect(readFileSync(first, 'utf8')).toBe('race winner');
+    expect(result.map(row => readFileSync(row.path, 'utf8'))).toEqual(['fixture-mp3', 'fixture-mp3']);
   });
   it('publishes a successful member while a sibling process result is still pending', async () => {
     let finish: (value: any) => void;

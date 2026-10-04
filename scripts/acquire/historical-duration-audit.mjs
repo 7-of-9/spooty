@@ -11,6 +11,7 @@ import { catalog, summary } from './catalog.mjs';
 import { createDurationResolver, positiveDurationMs } from './spotify-duration.mjs';
 import { getTrackDurationMetadata } from '../spotify-session.mjs';
 import { durationMatch } from './duration-policy.mjs';
+import { SourceReviewIndex } from './review-identity.mjs';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -61,10 +62,18 @@ function publicationEvents(statePath) {
 
 export function snapshotFiles(plan, downloads, events = [], reviews = []) {
   const base = realpathSync(downloads), byInode = new Map(), failures = [];
+  // Acquisition eligibility is not an audit inventory. Include wrong/unknown
+  // legacy files and bind every same-name source independently after migration.
+  const aliases = new Map(), aliasesBySource = new Map();
+  for (const song of plan.songs.values()) {
+    const names = [song.legacyKey || song.key, ...(song.destinations || []).map(path => basename(path).slice(0, -4).toLowerCase())];
+    aliasesBySource.set(song.key, [...new Set(names)]);
+    for (const name of names) aliases.set(name, [...new Set([...(aliases.get(name) || []), song.key])]);
+  }
   let scannedMp3Paths = 0, unmatchedMp3Paths = 0;
   const byPublication = new Map();
   for (const event of [...events].sort((a, b) => a.t - b.t)) byPublication.set(`${event.key}\0${event.file}`, event);
-  const reviewMap = new Map(reviews.map(entry => [entry.key, entry.status]));
+  const reviewIndex = new SourceReviewIndex(reviews);
   const dirs = [base];
   while (dirs.length) {
     const dir = dirs.pop();
@@ -76,8 +85,11 @@ export function snapshotFiles(plan, downloads, events = [], reviews = []) {
       }
       if (!/\.mp3$/i.test(entry.name)) continue;
       scannedMp3Paths++;
-      const key = basename(entry.name).slice(0, -4).toLowerCase();
-      if (!plan.songs.has(key)) { unmatchedMp3Paths++; continue; }
+      const alias = basename(entry.name).slice(0, -4).toLowerCase();
+      const versionId = basename(entry.name).match(/ \[sp-([A-Za-z0-9]{22})\](?:-\d+)?\.mp3$/i)?.[1];
+      const keys = versionId && plan.songs.has(`spotify:${versionId}`) ? [`spotify:${versionId}`] : aliases.get(alias);
+      if (!keys?.length) { unmatchedMp3Paths++; continue; }
+      const key = keys[0];
       let stat;
       try { stat = lstatSync(path); }
       catch { failures.push({ key, path, state: 'changed-file', reason: 'File disappeared during snapshot' }); continue; }
@@ -89,7 +101,7 @@ export function snapshotFiles(plan, downloads, events = [], reviews = []) {
         id, fingerprint: fingerprint(stat), paths: [], songKeys: [], provenance: {},
       };
       file.paths.push(path);
-      if (!file.songKeys.includes(key)) file.songKeys.push(key);
+      for (const sourceKey of keys) if (!file.songKeys.includes(sourceKey)) file.songKeys.push(sourceKey);
       const event = byPublication.get(`${key}\0${path}`);
       if (event) file.provenance[key] = {
         kind: event.guard ? 'guarded-publication-event' : 'pre-guard-publication-event',
@@ -103,9 +115,10 @@ export function snapshotFiles(plan, downloads, events = [], reviews = []) {
   const songKeys = new Set([...files.flatMap(file => file.songKeys), ...failures.map(item => item.key)]);
   const songs = [...plan.songs.values()].filter(song => songKeys.has(song.key)).map(song => ({
     key: song.key, artist: song.artist, name: song.name, spotifyIds: song.spotifyIds,
+    fileAliases: aliasesBySource.get(song.key) || [],
     durationMs: song.durationMs, durationSpotifyId: song.durationSpotifyId,
     durationConflict: song.durationConflict || false, destinations: song.destinations,
-    knownReviewStatus: reviewMap.get(song.key) || null,
+    knownReviewStatus: reviewIndex.statusFor(song),
   }));
   return { version: 1, snapshotId: `${iso().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`,
     startedAt: iso(), downloads: base, catalog: summary(plan), songs, files, snapshotFailures: failures,
@@ -170,7 +183,8 @@ export function comparison(file, song, probe, source) {
       [...variants].sort((a, b) => Math.abs(a.durationMs / 1000 - (probe?.durationSeconds || 0)) -
         Math.abs(b.durationMs / 1000 - (probe?.durationSeconds || 0)))[0] || source : source;
   const result = { key: song.key, fileId: file.id, fingerprint: file.fingerprint,
-    paths: file.paths.filter(path => basename(path).slice(0, -4).toLowerCase() === song.key),
+    paths: file.paths.filter(path => basename(path).slice(0, -4).toLowerCase() === song.key || song.fileAliases?.includes(basename(path).slice(0, -4).toLowerCase()) ||
+      (song.key?.startsWith('spotify:') && basename(path).includes(` [sp-${song.key.slice(8)}]`))),
     expectedDurationMs: selected?.durationMs || null, spotifyId: selected?.spotifyId || null,
     actualDurationSeconds: probe?.durationSeconds || null, differenceSeconds: null, toleranceSeconds: null,
     checkedAt: probe?.checkedAt || null, sourceCheckedAt: source?.checkedAt || null,

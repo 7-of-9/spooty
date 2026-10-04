@@ -1,5 +1,31 @@
 # YouTube acquisition CLI
 
+## Web runtime compatibility — 15 September 2026
+
+The retained `cli-proven` web profile uses the shared batch size 8, regardless
+of deprecated `YT_SEARCH_BATCH_SIZE` / `YT_DOWNLOAD_BATCH_SIZE` values inherited
+from older web-only launch commands. Custom profile mode still validates those
+overrides. A blank `QUALITY=` means the documented MP3 quality 0; explicitly
+incompatible format/quality settings still fail visibly. None of this raises
+pace, changes the safety floor, resets admission history, or resumes queues.
+
+The web activity strip reports current work separately from historical CLI
+throughput. Its details show server-session counts: new publications, local
+reuse, and other queue checks are separate. `/api/youtube/pace` exposes current
+stage/names and the next scheduled queue time, without authentication material.
+
+## Current discovery policy — 15 September 2026
+
+The shared CLI/web search now tries up to three query variants, stopping on the
+first title/artist/edition-and-duration match. `--max-searches 10` means ten
+ranked results **per query** (at most thirty slots before ID deduplication), not
+three network retries. At most two credible missing-duration candidates receive
+paced metadata-only extraction. The ±5%/5–20-second duration guard is unchanged.
+Latest per-candidate evidence lives in `data/acquire/search-diagnostics/` and is
+available from the web track's **Search evidence** disclosure. See the CLI
+README for exact limits, legacy-report behavior and unchanged parked-work rules.
+Historical descriptions below of a single-query search describe the old policy.
+
 The user promoted the CLI to a first-class entry point on14 September2026.
 Start with **[the CLI README](scripts/acquire/README.md)** for supported commands,
 all flags, restart behavior and the shared CLI/web pipeline. This file retains
@@ -21,6 +47,14 @@ Duration matching does not establish recording identity; a wrong performance
 or remix of similar length can still pass.
 
 ## Historical duration review
+
+Historical artist/title review keys are preserved, not migrated destructively.
+The shared SourceReviewIndex binds them to new Spotify source keys only through
+explicit catalog/reference/audit IDs. Source inspection, historical-duration
+snapshots, benchmark review reporting and replacement bookkeeping use that same
+lookup. Unbound records stay unresolved; a duration replacement cannot certify
+performer identity or resolve a multi-source group. Nothing is reopened or
+repaired by reading this evidence. See the CLI README for inspection diagnostics.
 
 The user-requested historical audit compares existing catalog MP3s with source
 Spotify durations without downloading or replacing media. It snapshots every
@@ -81,11 +115,12 @@ at `data/spotify-track-metadata/<SpotifyID>.json` (`SPOTIFY_TRACK_METADATA_PATH`
 override). No cookies or tokens are stored there. Missing source duration or
 conflicting source identity is retryable and cannot silently bypass the guard.
 
-CLI search examines up to **10 ranked candidates** by default. `--max-searches 5`
-selects five instead (allowed range1–50). This is result depth for one track
-query, not repeated queries or network retries. Search skips missing/wrong
-durations and chooses the first suitable result. The website now uses the same
-configurable default10-result policy. Cached URLs are subject to the same
+CLI search examines up to **10 ranked candidates per query** by default.
+`--max-searches 5` selects five instead (allowed range1–50). Since 15 September,
+up to three distinct query variants are tried automatically; candidate depth
+is not the query count or the network-retry budget. See the current section at
+the top for identity checks and bounded missing-duration inspection. The website
+uses the same policy. Cached URLs are subject to the same
 ID-bound yt-dlp duration filter **before media download**. An independent final
 ffprobe check must also match Spotify before tagging/publication/Completed.
 Rejected candidates are excluded and alternatives are scheduled through the

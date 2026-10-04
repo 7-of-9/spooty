@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
  * Single long-lived CDP connection to main Chrome.
- * Subsequent commands go through http://127.0.0.1:17331 so Chrome
- * is not prompted again.
+ * All commands go through http://127.0.0.1:17331. Startup and health checks
+ * never request Chrome permission. Explicit --connect or POST /connect is the
+ * only way to initiate one connection; no automatic reconnect after failure.
  */
 import fs from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const WebSocket = require('ws');
@@ -36,8 +39,8 @@ function readEndpoint() {
   return `ws://127.0.0.1:${port}${pth}`;
 }
 
-class Cdp {
-  constructor(onDisconnect = () => {}) {
+export class Cdp {
+  constructor(onDisconnect = () => {}, options = {}) {
     this.id = 0;
     this.pending = new Map();
     this.ws = null;
@@ -46,6 +49,29 @@ class Cdp {
     this.connecting = null;
     this.onDisconnect = onDisconnect;
     this.lastReconnectError = '';
+    this.WebSocket = options.WebSocket || WebSocket;
+    this.readEndpoint = options.readEndpoint || readEndpoint;
+    this.connectTimeoutMs = options.connectTimeoutMs ?? 120000;
+    this.log = options.log || log;
+    this.eventLog = [];
+    this.eventSeq = 0;
+  }
+
+  recordEvent(msg) {
+    if (!msg?.method || !FORWARDED_EVENTS.has(msg.method)) return;
+    this.eventSeq += 1;
+    this.eventLog.push({
+      seq: this.eventSeq,
+      method: msg.method,
+      params: msg.params,
+      sessionId: msg.sessionId,
+    });
+    if (this.eventLog.length > 2000) this.eventLog.splice(0, this.eventLog.length - 2000);
+  }
+
+  clearEvents() {
+    this.eventLog = [];
+    this.eventSeq = 0;
   }
 
   async connect() {
@@ -58,39 +84,56 @@ class Cdp {
   }
 
   async open() {
-    this.endpoint = readEndpoint();
-    log(`Connecting once to ${this.endpoint}`);
-    log('If Chrome shows Allow, click it ONCE. This process will stay open.');
+    this.endpoint = this.readEndpoint();
+    this.log('Opening one requested Chrome connection. No automatic reconnects.');
     await new Promise((resolve, reject) => {
       let settled = false;
-      const timer = setTimeout(
-        () => reject(new Error('connect timeout — click Allow in Chrome')),
-        120000,
-      );
-      const socket = new WebSocket(this.endpoint, {
+      const socket = new this.WebSocket(this.endpoint, {
         perMessageDeflate: false,
       });
       this.ws = socket;
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.ws === socket) {
+          this.ws = null;
+          this.connectedAt = null;
+        }
+        // A timed-out handshake is still a live socket unless explicitly closed.
+        // Leaving it behind causes repeated Chrome prompts and late-open races.
+        socket.terminate();
+        reject(error);
+      };
+      const timer = setTimeout(
+        () => fail(new Error('Chrome connection timed out; reconnect explicitly')),
+        this.connectTimeoutMs,
+      );
       socket.on('open', () => {
+        if (settled || this.ws !== socket) {
+          socket.terminate();
+          return;
+        }
         settled = true;
         clearTimeout(timer);
         this.connectedAt = new Date().toISOString();
         this.lastReconnectError = '';
-        log('CDP session alive');
+        this.clearEvents();
+        this.log('CDP session alive');
         resolve();
       });
       socket.on('error', (err) => {
-        clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          reject(err);
-        }
+        fail(err);
       });
       socket.on('close', (code, reason) => {
-        log(`WebSocket closed code=${code} reason=${reason}`);
+        if (!settled) fail(new Error('Chrome closed the connection before approval'));
+        // An obsolete socket must not clear a newer connection's pending calls.
+        if (this.ws !== socket) return;
+        this.log(`WebSocket closed code=${code}`);
         if (this.ws === socket) {
           this.ws = null;
           this.connectedAt = null;
+          this.clearEvents();
         }
         for (const [, { reject: rej }] of this.pending) {
           rej(new Error('CDP socket closed'));
@@ -110,22 +153,23 @@ class Cdp {
           this.pending.delete(msg.id);
           if (msg.error) rej(new Error(JSON.stringify(msg.error)));
           else res(msg);
-        }
+        } else this.recordEvent(msg);
       });
     });
   }
-  send(method, params = {}, sessionId) {
+  send(method, params = {}, sessionId, timeoutMs = 30000) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error('CDP not connected'));
     }
     const id = ++this.id;
     const payload = { id, method, params };
     if (sessionId) payload.sessionId = sessionId;
+    const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`CDP timeout: ${method}`));
-      }, 30000);
+      }, timeout);
       this.pending.set(id, {
         resolve: (v) => {
           clearTimeout(timer);
@@ -169,6 +213,16 @@ function json(res, code, body) {
 
 const sessions = new Map(); // targetId -> sessionId
 let resyncTargetId = null;
+const FORWARDED_EVENTS = new Set([
+  'Runtime.executionContextCreated',
+  'Runtime.executionContextDestroyed',
+  'Runtime.executionContextsCleared',
+  'Target.attachedToTarget',
+  'Target.detachedFromTarget',
+  'Target.targetCreated',
+  'Target.targetDestroyed',
+  'Target.targetInfoChanged',
+]);
 
 async function attach(cdp, targetId) {
   if (sessions.has(targetId)) return sessions.get(targetId);
@@ -182,21 +236,30 @@ async function attach(cdp, targetId) {
   return sessionId;
 }
 
-async function handle(cdp, req, res) {
+export async function handle(cdp, req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   if (req.method === 'GET' && url.pathname === '/health') {
-    if (!(cdp.ws && cdp.ws.readyState === WebSocket.OPEN)) {
-      cdp.connect().catch(() => {});
-    }
     return json(res, 200, {
       ok: true,
       connected: !!(cdp.ws && cdp.ws.readyState === 1),
-      endpoint: cdp.endpoint,
+      connecting: !!cdp.connecting,
       connectedAt: cdp.connectedAt,
       pid: process.pid,
     });
   }
-  await cdp.connect();
+  if (req.method === 'POST' && url.pathname === '/connect') {
+    const body = await readBody(req);
+    if (body.confirm !== 'allow-one-chrome-connection') {
+      return json(res, 400, { error: 'Explicit single-connection confirmation required' });
+    }
+    await cdp.connect();
+    return json(res, 200, { connected: true });
+  }
+  if (!(cdp.ws && cdp.ws.readyState === WebSocket.OPEN)) {
+    return json(res, 503, {
+      error: 'Chrome bridge disconnected. Reconnect explicitly; automatic permission requests are disabled.',
+    });
+  }
   if (req.method === 'GET' && url.pathname === '/tab') {
     const msg = await cdp.send('Target.getTargets');
     const pages = (msg.result.targetInfos || []).filter((t) => t.type === 'page');
@@ -226,6 +289,11 @@ async function handle(cdp, req, res) {
       created: false,
       url: target.url,
     });
+  }
+  if (req.method === 'GET' && url.pathname === '/events') {
+    const after = Number(url.searchParams.get('after') || 0);
+    const events = cdp.eventLog.filter((event) => event.seq > after);
+    return json(res, 200, { after: cdp.eventSeq, events });
   }
   if (req.method === 'GET' && url.pathname === '/targets') {
     const msg = await cdp.send('Target.getTargets');
@@ -263,7 +331,15 @@ async function handle(cdp, req, res) {
   }
   if (req.method === 'POST' && url.pathname === '/cdp') {
     const body = await readBody(req);
-    const msg = await cdp.send(body.method, body.params || {}, body.sessionId);
+    if (body.method === 'Target.activateTarget') {
+      return json(res, 403, { error: 'Foreground activation is disabled; use the shared background tab' });
+    }
+    const msg = await cdp.send(
+      body.method,
+      body.params || {},
+      body.sessionId,
+      body.timeoutMs,
+    );
     return json(res, 200, msg);
   }
   json(res, 404, { error: 'not found' });
@@ -287,12 +363,9 @@ async function main() {
     sessions.clear();
     resyncTargetId = null;
   });
-  await cdp.connect();
-  fs.writeFileSync(PID_FILE, String(process.pid));
-
-  setInterval(async () => {
+  const heartbeat = setInterval(async () => {
+    if (!(cdp.ws && cdp.ws.readyState === WebSocket.OPEN)) return;
     try {
-      await cdp.connect();
       await cdp.send('Browser.getVersion');
     } catch (error) {
       const message = String(error?.message || error);
@@ -310,17 +383,34 @@ async function main() {
     });
   });
   server.listen(PORT, '127.0.0.1', () => {
+    // Own the singleton HTTP port before opening any Chrome connection.
+    fs.writeFileSync(PID_FILE, String(process.pid));
     log(`Keepalive HTTP on http://127.0.0.1:${PORT} pid=${process.pid}`);
+    if (process.argv.includes('--connect')) {
+      cdp.connect().catch((error) => log(error.message));
+    }
+  });
+  server.on('error', (error) => {
+    clearInterval(heartbeat);
+    log(`HTTP listener failed: ${error.message}`);
+    process.exitCode = 1;
   });
 
   const shutdown = () => {
-    log('shutdown requested — ignoring so the Chrome session stays open');
+    clearInterval(heartbeat);
+    cdp.ws?.terminate();
+    server.close();
+    if (fs.existsSync(PID_FILE) && fs.readFileSync(PID_FILE, 'utf8').trim() === String(process.pid)) {
+      fs.unlinkSync(PID_FILE);
+    }
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
 
-main().catch((err) => {
-  log(String(err.stack || err));
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    log(String(err.stack || err));
+    process.exit(1);
+  });
+}

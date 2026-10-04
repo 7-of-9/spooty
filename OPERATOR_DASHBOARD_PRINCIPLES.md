@@ -40,6 +40,60 @@ the3/minute baseline, not searches, admissions or staging files.
 
 ## Information architecture
 
+### 15 September 2026: one activity surface (current contract)
+
+The user's live-resume usability review supersedes older layout notes below.
+
+- One **Current activity** strip, at the top of the main pane, answers what is
+  happening now: operation, track, real progress, or the reason work is waiting.
+- Include preparation, Spotify metadata, local reuse and duration verification,
+  not just yt-dlp. Read actual Bull membership; queued database rows alone are
+  not proof of execution. Duplicate playlist occurrences waiting for the same
+  track are described as waiting, not additional searches.
+- Include HTTP-side playlist preparation before Bull jobs exist. The backend
+  reports its actual playlist/track and checked count; losing the browser's
+  request does not make that work disappear. Do not change the download folder
+  or accept overlapping playlist batches while that preparation is running.
+- Queue acknowledgements appear in Current activity, including no-op and local
+  reuse outcomes. Queued work is not a completed MP3; local copies are not new
+  downloads. A lost/invalid reply means unconfirmed outcome, not failed audio.
+  Refresh observed state without automatically repeating the mutation.
+- Download submissions carry a saved request identity. A reload or lost HTTP
+  reply recovers that exact request's completed counts, not an unrelated latest
+  result. A backend restart during preparation reports interruption without
+  invented partial counts or replaying work. **Check submission** is read-only.
+  Background sync must not erase a recent download acknowledgement or leave
+  saved-library loading stuck during recovery.
+- Show determinate percentages only after progress is reported. Other active
+  operations use an indeterminate bar. Paused, delayed and idle work does not
+  animate. A delayed queue gives its next wake-up time; configuration problems
+  give an actionable warning instead of promising automatic progress.
+- Concurrent Spotify work and user-action errors appear in that same strip.
+  Successful resync gets a brief acknowledgement, then moves to recent history.
+- **Activity details**, collapsed by default, contains concurrent jobs,
+  chronological recent events, queued playlists, technical pace and historical
+  CLI benchmarks. Never mistake the historical benchmark for current web speed.
+- The sidebar is navigation: saved total, filter/sort, playlist names/owners and
+  short N/M saved counts. Detailed counts remain in tooltips and accessibility
+  labels. **Sync Spotify library** stays visible with its scope explained:
+  update playlists and tracks, not MP3 downloads. Bulk/download-folder tools
+  remain under **Library tools**. A focused **Sync this playlist** action is
+  distinct; neither sync control starts downloads or changes existing MP3s.
+- The focused playlist has one labelled saved-progress bar, actionable buttons,
+  and concise track states. Search options/evidence and failure detail expand on
+  demand. No disabled button masquerading as status; no bottom queue overlay;
+  no repeated pending/waiting/retry counters or stale success banners.
+- Keep completion in that saved-progress summary, not extra title badges and
+  banners. A local file is saved, not proof of a new download. Distinguish old
+  saved-list timestamps from a complete Spotify membership check; missing or
+  invalid timestamps must not break the page or imply successful sync.
+- Routine work uses green/neutral styling. Yellow/red is for attention, not
+  normal processing. Narrow layouts collapse playlist navigation and preserve
+  the activity strip and a usable track-table viewport.
+- Telemetry is observational. It must not change pace, queue ownership, resume
+  work, or count local copies as new downloads. Session totals reset on backend
+  restart and are labelled accordingly.
+
 - The left side is the work queue and playlist navigator. Its default
   **Needs work first** order is:
   1. currently processing;
@@ -60,14 +114,31 @@ the3/minute baseline, not searches, admissions or staging files.
 
 ## State must be truthful
 
+**15 September action-model correction:** never infer that unsubmitted tracks
+are queued just because other tracks or playlists have work. Legacy New rows
+with actual Bull jobs are projected as Waiting from queue membership; parked
+journal outcomes remain parked. Status is text, never a disabled fake action.
+
 The interface reports observed state, not optimistic intent:
 
-- A non-empty file under `DOWNLOADS_PATH` is the decisive proof of success.
+- A non-empty file under the active download folder proves file presence, not
+  that every same-named Spotify recording is satisfied. A known source-duration
+  or recording mismatch must not count as complete or copyable for that source.
+  Unknown identity evidence is unverified, not a confirmed bad file. Preserve
+  legitimate cross-playlist reuse while binding workflow outcomes to the
+  particular Spotify source and its playlist occurrences. The sidebar's
+  persistent **Download folder** setting overrides the
+  `DOWNLOADS_PATH` fallback for both the website and CLI.
 - SQLite records durable playlist and track workflow state.
 - Redis/BullMQ records runnable, delayed, and active work.
 - Spotify snapshot dumps record playlist membership and ordering.
 - Conflicts are resolved toward physical truth and the most current actionable
   state; a stale database label must never overrule a real file or active job.
+- If a destination becomes occupied during a copy/download, preserve that file
+  and use a source-specific versioned destination. Never treat unrelated bytes
+  as a successful copy. Completion, playback and filename evidence must follow
+  the actual published path. Reusing an independently encoded existing file
+  requires still-current source-duration evidence; existence alone is not enough.
 
 Track labels have specific meanings:
 
@@ -94,11 +165,44 @@ misses remains visibly distinguishable from one with every track saved.
   remain available as narrower actions.
 - Repeating an action must be idempotent. Existing files, existing queue work,
   and already-known URLs are reused rather than duplicated.
+- An action's enabled state, visible blocked reason and click handler must
+  share the same eligibility rule. Never show an enabled control whose handler
+  silently ignores it. Finishing preparation re-enables eligible controls
+  without a page reload; unrelated queued tracks alone do not block a focused
+  playlist's unsubmitted work or explicit retries.
+- A playlist's unqueued work keeps its counted **Queue N for search & download**
+  action even when other tracks are queued/running. Copy-only work says
+  **Add N existing MP3s to this folder** and explains that no download is needed.
+- Paused queues have a prominent explanation and an explicit **Resume web
+  downloads** control. Its confirmation names the whole-web-queue scope,
+  including older batches. Backend resume atomically checks CLI ownership and
+  preserves jobs, safety cooldowns and admission history. Enqueue never resumes.
+- Hide zero-failure counters and successful-track diagnostics; candidate search
+  exhaustion is an expected outcome with **Search again**, not a network error.
 - Whole-library and mass-selection actions are disabled while a live queue is
   already present. The explanation must be visible, not implicit.
 - An explicit playlist retry is the opt-in route for retrying confirmed misses.
+- Waiting, scheduled, or running tracks must not hide explicit retry controls
+  for other failed tracks in that playlist. Retain ownership and duplicate-job
+  guards; distinguish a paused admission from actually running work.
+- Queue pause state comes from Bull, not from stale track statuses or the
+  presence of a CLI lease. Show paused/partial pause explicitly. Queue drawer
+  counts label their playlist units; waiting is not processing. Never resume
+  the whole preserved backlog as an implicit side effect of a playlist retry.
 - Destructive actions are never bundled into refresh, sync, download, or
   playback.
+- The advanced **Restore tested download limits** control changes concurrency
+  and download-start limits only, not search policy or queue state. Require
+  both queues paused, active work drained and no conflicting owner/preparation;
+  never bypass a recovery cooldown or safety floor. Show already-selected limits
+  as text, not a disabled status button. Show the action's progress, rejection
+  or acknowledgement in Current activity. A lost reply triggers fresh read-only
+  observation, never automatic reapplication; an older status read must not
+  overwrite a newly acknowledged change.
+- Changing **Download folder** validates an existing absolute directory and
+  rescans saved coverage. It changes scanning, playback and future destinations,
+  never moves/deletes files or resumes queues, and is blocked while a CLI owns
+  acquisition or unpaused/running web work could still use the old destination.
 - Result messages distinguish newly queued, already saved, already queued,
   known missing, and failed work instead of calling every no-op a success.
 
@@ -108,9 +212,19 @@ misses remains visibly distinguishable from one with every track saved.
 - On load, the dashboard quietly discovers the current Spotify playlist
   library. It imports new playlists and refreshes only playlists whose snapshot
   or membership changed.
+- Skip a track-list refresh only when the saved membership is complete and
+  its available Spotify snapshot ID still matches. Missing revision evidence
+  means unknown, not unchanged; equal counts alone cannot detect replacements
+  or reordering. Focused refresh invalidates its old discovery baseline until
+  a library check can establish a new one. Verified unchanged metadata files
+  remain untouched; owner/name/order changes still persist.
 - Selecting a playlist may auto-resync it with a ten-minute debounce. A
-  fifteen-minute background cycle keeps an open dashboard current without
-  excessive metadata traffic.
+  fifteen-minute background cycle discovers the whole library, including newly
+  followed playlists, even without a selection. It reuses a recent library
+  check, follows existing work and respects quiet-failure backoff. A recent
+  focused-playlist refresh is not proof that library discovery is current.
+  Known disconnected/connecting/unavailable Chrome never triggers quiet sync
+  submissions or permission requests.
 - Private playlist discovery uses the persistent bridge at
   `127.0.0.1:17331`, the logged-in main Chrome profile, and a background tab.
   Angular does not call CDP or Spotify directly; the Nest backend invokes the
@@ -118,10 +232,49 @@ misses remains visibly distinguishable from one with every track saved.
 - Track lists come from Spotify APIs, not playlist-page HTML. Declared API
   counts, pagination completion, and snapshot identity determine whether a
   response is safe to persist.
+- Discovery collects every library page before creating/updating any playlist.
+  Missing paging data, gaps, duplicates, changing totals and malformed rows
+  produce an incomplete-library result, never a successful empty library.
+  A positively empty library requires an explicit zero total and terminal page.
+- Whole playlists absent from a complete library discovery are kept locally,
+  along with their files and queued work. Explain this in the focused playlist
+  with a neutral **Kept locally** note and the date of that library check.
+  Failed/partial discoveries never imply removal. A focused or saved-playlist
+  refresh does not establish library presence; only a later complete library
+  discovery can replace that observation. Preserve this distinction across
+  restarts without rewriting unchanged playlist files or rescanning audio.
 - A failed, truncated, rate-limited, or timed-out sync never replaces a known
   good snapshot. Writes are atomic.
+- Intentional track removals, including an empty playlist, are accepted only
+  after two complete, matching authenticated API reads. Completeness evidence
+  binds the playlist ID, total item count, ordered song IDs (including repeats),
+  and understood non-music exclusions. Missing metadata, unknown/malformed rows,
+  or a changing confirmation preserves the previous membership. Spotify is the
+  membership source of truth: a verified removal unlinks that playlist folder's
+  copies of the dropped tracks and drops their queued work for this playlist.
+  Hardlinks in other playlist folders stay. Remaining tracks, including
+  mismatching files for songs still on the list, stay. Incomplete reads never
+  delete audio.
+- A verified empty Spotify playlist is distinct from a list not yet loaded or
+  one containing only podcasts/local-only entries. Missing discovery counts
+  mean unknown, not zero. Verified non-music/empty baselines avoid repeated sync.
 - If CDP or Spotify is unavailable, the dashboard continues to load, play, and
   process the saved local library and says clearly that live sync is degraded.
+- Sync uses the same Current activity strip, not a separate sidebar status
+  stack. Connection loss stops the sync animation and says that the server may
+  still be working; observe recovery before offering another submission. A
+  lost POST response is not proof that a sync failed to start.
+- Library, focused-playlist and saved-playlist bulk sync share one durable
+  operation with an ID, scope, progress and result. Reloading follows that
+  operation; another tab can observe it without starting a second one. A
+  previous completed sync is never a receipt for an unconfirmed new request.
+  Late observations must not overwrite a newer user action, and closing the
+  component must not leave callbacks capable of submitting or polling again.
+- Chrome readiness follows current observations: an older health reply must
+  not undo a newer acknowledged connection. A stale confirmation cannot request
+  another connection once readiness changes. Closing the dashboard disposes
+  its response subscriptions without disconnecting the shared bridge or
+  cancelling work owned by the server.
 
 ## Durable, unattended operation
 
@@ -155,14 +308,39 @@ misses remains visibly distinguishable from one with every track saved.
 - Status is conveyed with text as well as colour. Controls have accessible
   labels, disabled explanations, and keyboard behaviour appropriate to their
   roles.
+- Activity text, progress labels and keyboard focus must stay readable against
+  the actual activity-panel background, including hover and system dark mode.
+  Do not reuse dark-banner colours unchanged on a light activity surface.
 - The playlist list remains usable at hundreds or thousands of playlists.
   Initial load uses playlist summaries plus active tracks instead of an N+1
   request per playlist.
+- Local audio verification must not hold the entire saved library off screen.
+  Show browsable metadata and one Current activity checked/total indicator while
+  checking. Unchecked is neither Missing nor a download requirement. Focused
+  playlists get priority; their verified tracks can play while other checks run.
+  Progress reads follow one scan, stop on completion, and do not launch another
+  scan. Observation loss stops the animation without claiming work stopped.
+  Folder, membership or backend changes invalidate old scan identities; a fresh
+  local read must never repeat a download or connect Chrome. Recheck is explicit
+  for failed local verification, and old scan rows cannot overrule a new check.
 - Poll only while it adds information. Socket events carry live changes;
-  expensive coverage scans run while processes are active or after a meaningful
-  transition, not forever because rows merely remain queued.
+  normal observations reuse one maintained coverage index. Local media changes
+  recheck affected sources/aliases, including hardlinks; workflow-only changes
+  do not probe audio again. Initial loading, explicit recheck, unknown directory
+  changes and changed membership/settings may rebuild the complete index.
+  Never rebuild it merely because rows remain queued or a timer fires.
+  Show targeted work as **Updating saved files** in Current activity. An old
+  Completed event cannot override checked file absence or create a Play button.
+  If filesystem notifications fail or the watched root is replaced, disclose
+  that automatic updates are unavailable and offer **Check saved files again**.
+  These observations never sync Spotify, enqueue work or modify MP3s.
 - Mobile and narrow layouts may rearrange the two panes, but must preserve the
   same status hierarchy, primary action, and evidence.
+- Collapsing playlist navigation must not hide whole-library sync. Opening the
+  chooser focuses its filter; Up/Down browse visible results without closing
+  it or submitting Spotify work. Enter opens the focused playlist; Escape
+  returns to the chooser button. Space selects only a visible playlist for a
+  batch. Keep offscreen keyboard results visible within the actual scroll pane.
 
 ## Iteration discipline
 
@@ -182,9 +360,11 @@ Screenshots alone are not verification. Meaningful UI work must exercise, as
 applicable, saved-library load, Spotify sync/resync, enqueue/download, live
 state transitions, failure handling, and local playback.
 
-## Current implementation position — 2026-09-11
+## Historical implementation record — 2026-09-11 onward
 
-Implemented and verified:
+The following is historical evidence, not authority to restore old banners,
+sidebar status blocks, or queue overlays. The current information architecture
+above takes precedence. Earlier implemented and verified behaviour:
 
 - saved-library-first load with background Spotify discovery;
 - processing → actionable partial → untouched → finished default ordering;
@@ -348,14 +528,17 @@ Implemented and verified:
 
 Highest-priority remaining iterations:
 
-1. Persist sync/resync progress and typed failure kinds across backend restarts.
-2. Replace artist/title identity with a durable normalised track key plus
-   explicit playlist occurrences.
-3. Incrementally maintain filesystem/database coverage indexes instead of
-   rescanning the complete library during active refreshes.
-4. Establish trusted membership baselines for legacy dumps before accepting an
-   initial Spotify snapshot ID.
-5. Distinguish intentional Spotify removals from incomplete upstream responses
-   without risking local data loss.
+1. Live-verify the implemented durable sync/resync progress and typed recovery
+   across backend restarts and multiple open dashboard tabs.
+2. Live-verify the implemented Spotify-source identity and explicit occurrence
+   projection across CLI/web reuse, publication races and legacy review ledgers.
+3. Browser-verify the implemented incremental filesystem/database coverage,
+   file-change notifications, manual fallback and cross-tab updates. Native
+   filesystem/socket/HTTP fixture and DOM checks are not real browser acceptance.
+4. Establish trusted membership baselines for the real legacy dumps using the
+   implemented completeness guard before accepting an initial snapshot ID.
+5. Live-verify the new twice-confirmed Spotify removal/empty-playlist handling
+   without changing existing MP3s or queued jobs; its regression tests pass but
+   successful Spotify/browser integration remains unverified while disconnected.
 6. Continue real-browser usability review, responsive refinement, and removal
    of build-quality warnings after correctness and operator safety.

@@ -4,7 +4,7 @@ import { In, Repository } from 'typeorm';
 import { TrackEntity, TrackStatusEnum } from './track.entity';
 import { PlaylistEntity } from '../playlist/playlist.entity';
 import { ConfigService } from '@nestjs/config';
-import { join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server } from 'socket.io';
@@ -13,6 +13,7 @@ import { UtilsService } from '../shared/utils.service';
 import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { YoutubeService } from '../shared/youtube.service';
+import { webActivity } from '../shared/web-activity';
 import {
   isRetryableYoutubeFailure,
   MAX_YOUTUBE_ASYNC_RETRIES,
@@ -37,11 +38,13 @@ import {
 } from '../shared/acquisition/duration-policy';
 import {
   isNonEmptyFile,
-  reuseCompletedTrackFile,
+  reuseCompletedTrackMedia,
 } from './completed-track-reuse';
 import { KeyedWork } from './keyed-work';
 import { SpotifyDurationService } from '../shared/spotify-duration.service';
 import { durationFailure } from '../shared/youtube-duration';
+import { songKey, sourceKey, sourceFileBase, sourceJournal } from '../shared/acquisition/identity';
+import { LocalMediaIndex, mediaDurationCache } from '../shared/acquisition/local-media';
 
 enum WsTrackOperation {
   New = 'trackNew',
@@ -62,8 +65,51 @@ export type AcquisitionOptions = {
 export class TrackService {
   @WebSocketServer() io: Server;
   private readonly logger = new Logger(TrackService.name);
-  private completedAudioIndex: Promise<Map<string, string>> | null = null;
+  private mediaIndex: { root: string; at: number; value: LocalMediaIndex } | null = null;
   private readonly keyedWork = new KeyedWork();
+  private admittedCache: { at: number; ids: Set<number> } | null = null;
+
+  private async admittedTrackIds(fresh = false): Promise<Set<number>> {
+    if (
+      !fresh &&
+      this.admittedCache &&
+      Date.now() - this.admittedCache.at < 2000
+    )
+      return this.admittedCache.ids;
+    const client = await this.trackSearchQueue.client;
+    const keys: string[] = [];
+    for (const name of ['track-search-processor', 'track-download-processor'])
+      for (const kind of ['wait', 'paused', 'active', 'delayed', 'prioritized'])
+        keys.push(`bull:${name}:${kind}`);
+    const lists = (await client.eval(
+      `
+      local result = {}
+      for i,key in ipairs(KEYS) do
+        local kind = (i-1) % 5
+        result[i] = redis.call(kind < 3 and 'LRANGE' or 'ZRANGE', key, 0, -1)
+      end
+      return result`,
+      keys.length,
+      ...keys,
+    )) as string[][];
+    const ids = new Set<number>();
+    for (const jobId of lists.flat()) {
+      const match = /^id-(\d+)-/.exec(jobId);
+      if (match) ids.add(Number(match[1]));
+    }
+    this.admittedCache = { at: Date.now(), ids };
+    return ids;
+  }
+
+  private projectAdmission(track: TrackEntity, ids: Set<number>): TrackEntity {
+    // Old admissions used New. Actual Bull membership is authoritative, but
+    // preserved stale jobs must not reopen a parked terminal journal outcome.
+    return track.status === TrackStatusEnum.New &&
+      !track.acquisitionState &&
+      ids.has(track.id)
+      ? { ...track, status: TrackStatusEnum.Queued }
+      : track;
+  }
 
   constructor(
     @InjectRepository(TrackEntity)
@@ -85,10 +131,14 @@ export class TrackService {
     const journal = new Map(
       (await this.store().all()).map((row) => [row.key, row]),
     );
+    const admitted = await this.admittedTrackIds();
     return rows.map((track) =>
-      this.projectJournal(
-        track,
-        journal.get(this.utilsService.trackFileKey(track.artist, track.name)),
+      this.projectAdmission(
+        this.projectJournal(
+          track,
+          sourceJournal(track, journal),
+        ),
+        admitted,
       ),
     );
   }
@@ -97,27 +147,65 @@ export class TrackService {
     return this.repository.find({ where: { playlist: { id } } });
   }
 
-  getActive(): Promise<TrackEntity[]> {
-    return this.repository.find({
-      where: {
+  async getActive(): Promise<TrackEntity[]> {
+    const rows = await this.getAll(
+      {
         status: In([
+          TrackStatusEnum.New,
           TrackStatusEnum.Searching,
           TrackStatusEnum.Queued,
           TrackStatusEnum.Downloading,
           TrackStatusEnum.RetryWaiting,
         ]),
       },
-      relations: ['playlist'],
-    });
+      { playlist: true },
+    );
+    return rows.filter((row) =>
+      [
+        TrackStatusEnum.Searching,
+        TrackStatusEnum.Queued,
+        TrackStatusEnum.Downloading,
+        TrackStatusEnum.RetryWaiting,
+      ].includes(row.status),
+    );
   }
 
   get(id: number): Promise<TrackEntity | null> {
     return this.repository.findOne({ where: { id }, relations: ['playlist'] });
   }
 
+  searchEvidence(artist: string, name: string, spotifyUrl?: string) {
+    return this.youtubeService.searchEvidence(
+      sourceKey({ artist, name, spotifyUrl }),
+    );
+  }
+
+  async journalSnapshot(): Promise<Map<string, any>> {
+    return new Map((await this.store().all()).map(row => [row.key, row]));
+  }
+
+  projectStoredOutcome(track: TrackEntity, old: any): TrackEntity {
+    return this.projectJournal(track, old);
+  }
+
   async remove(id: number): Promise<void> {
+    await this.dropJobsForTrack(id);
     await this.repository.delete(id);
-    this.io.emit(WsTrackOperation.Delete, { id });
+    this.io?.emit(WsTrackOperation.Delete, { id });
+  }
+
+  private async dropJobsForTrack(trackId: number): Promise<void> {
+    const prefix = `id-${trackId}-`;
+    for (const queue of [this.trackSearchQueue, this.trackDownloadQueue]) {
+      try {
+        const jobs = await queue.getJobs(['waiting', 'wait', 'paused', 'delayed', 'prioritized', 'active']);
+        for (const job of jobs) {
+          if (job?.id && String(job.id).startsWith(prefix)) {
+            try { await job.remove(); } catch { /* Playlist membership and files still follow Spotify. */ }
+          }
+        }
+      } catch { /* Redis unavailable: files still unlinked. */ }
+    }
   }
 
   private workStore: WebWorkStore;
@@ -128,9 +216,12 @@ export class TrackService {
   }
 
   private async restoreJournal(track: TrackEntity): Promise<TrackEntity> {
-    const old = await this.store().get(
-      this.utilsService.trackFileKey(track.artist, track.name),
-    );
+    const key = sourceKey(track);
+    const exact = await this.store().get(key);
+    const legacy = !exact && key !== songKey(track.artist, track.name)
+      ? await this.store().get(songKey(track.artist, track.name)) : null;
+    const old = sourceJournal(track, new Map([...(exact ? [[key, exact] as [string, any]] : []),
+      ...(legacy ? [[songKey(track.artist, track.name), legacy] as [string, any]] : [])]));
     return this.projectJournal(track, old);
   }
 
@@ -163,7 +254,7 @@ export class TrackService {
 
   private async checkpoint(track: TrackEntity, state: string): Promise<void> {
     await this.store().save({
-      key: this.utilsService.trackFileKey(track.artist, track.name),
+      key: sourceKey(track),
       url: track.youtubeUrl,
       state,
       attempts: track.operationAttempts || 0,
@@ -173,6 +264,8 @@ export class TrackService {
       searchLimit: track.searchLimit || 0,
     });
     await this.update(track.id, track);
+    if (['ready', 'retry', 'missing', 'no-candidate', 'failed', 'error'].includes(state))
+      webActivity.result(track.id, state === 'error' ? (track.acquisitionState || 'failed') : state);
   }
 
   private shouldSkip(track: TrackEntity, options: AcquisitionOptions): boolean {
@@ -220,7 +313,10 @@ export class TrackService {
   }
 
   async update(id: number, track: TrackEntity): Promise<void> {
-    await this.repository.update(id, track);
+    // Search-only context is intentionally not a TypeORM column. Preserve it
+    // in the in-flight object, but never send it to the database update API.
+    const { searchAlbum: _searchAlbum, ...persisted } = track;
+    await this.repository.update(id, persisted);
     this.io.emit(WsTrackOperation.Update, track);
   }
 
@@ -238,15 +334,13 @@ export class TrackService {
     input: TrackEntity,
     options: AcquisitionOptions,
   ): Promise<boolean> {
-    // Physical output wins immediately; normal actions do not re-audit or fetch
-    // Spotify metadata for existing media.
-    if (
-      input.playlist &&
-      isNonEmptyFile(this.getFolderName(input, input.playlist))
-    ) {
+    const local = input.playlist ? await this.localMedia(input) : null;
+    if (local?.local) {
+      input = { ...input, audioFilename: basename(local.local), durationMs: local.expectedMs || input.durationMs };
       await this.reconcileExistingMedia(input);
       return false;
     }
+    if (local) input = { ...input, audioFilename: basename(local.destination) };
     let track = await this.restoreJournal(input);
     if (this.shouldSkip(track, options)) {
       await this.update(track.id, {
@@ -256,13 +350,24 @@ export class TrackService {
       });
       return false;
     }
+    if (
+      input.status === TrackStatusEnum.New &&
+      (await this.admittedTrackIds(true)).has(input.id)
+    ) {
+      // Reconcile the old label, not the job or its already selected source.
+      await this.update(track.id, { ...track, status: TrackStatusEnum.Queued });
+      return false;
+    }
     const limits = candidateLimits({
       'max-searches': options.maxSearches ?? track.maxSearches ?? 10,
       'network-retries': options.networkRetries ?? track.networkRetryLimit ?? 5,
     });
     track = {
       ...track,
-      status: TrackStatusEnum.New,
+      // Queue admission is Waiting, not never-submitted Pending. Persist before
+      // adding so a fast worker cannot have its Searching/Completed state
+      // overwritten by a late post-admission update.
+      status: TrackStatusEnum.Queued,
       error: null,
       acquisitionState: null,
       retryAt: null,
@@ -281,9 +386,22 @@ export class TrackService {
       track.operationAttempts = 0;
     }
     await this.checkpoint(track, track.youtubeUrl ? 'ready' : 'pending');
-    await this.trackSearchQueue.add('', track, {
-      jobId: 'id-' + track.id + '-' + Date.now(),
-    });
+    try {
+      await this.trackSearchQueue.add('', track, {
+        jobId: 'id-' + track.id + '-' + Date.now(),
+      });
+    } catch {
+      await this.checkpoint(
+        {
+          ...track,
+          status: TrackStatusEnum.Error,
+          acquisitionState: 'failed',
+          error: 'Could not queue YouTube search',
+        },
+        'error',
+      );
+      throw new Error('Could not queue YouTube search');
+    }
     return true;
   }
 
@@ -299,7 +417,7 @@ export class TrackService {
           ),
         )
         .map((track) =>
-          this.utilsService.trackFileKey(track.artist, track.name),
+          sourceKey(track),
         ),
     );
     return keys.size;
@@ -307,8 +425,8 @@ export class TrackService {
 
   async findOnYoutube(track: TrackEntity, retryAttempt = 0): Promise<void> {
     return this.keyedWork.run(
-      this.utilsService.trackFileKey(track.artist, track.name),
-      () => this.findOnYoutubeSerial(track, retryAttempt),
+      sourceKey(track),
+      () => webActivity.run(track, () => this.findOnYoutubeSerial(track, retryAttempt)),
     );
   }
 
@@ -337,6 +455,7 @@ export class TrackService {
       )
         this.youtubeService.rejectCandidate(track);
       if (!track.youtubeUrl) {
+        webActivity.phase(track, 'waiting-search');
         const siblings = await this.repository.find({
           where: { artist: track.artist, name: track.name },
         });
@@ -347,12 +466,13 @@ export class TrackService {
         track.youtubeUrl =
           reused && !this.youtubeService.isRejectedCandidate(track, reused)
             ? reused
-            : await this.youtubeService.findTrackOnYoutube(track, () =>
-                this.update(track.id, {
+            : await this.youtubeService.findTrackOnYoutube(track, () => {
+                webActivity.phase(track, 'searching');
+                return this.update(track.id, {
                   ...track,
                   status: TrackStatusEnum.Searching,
-                }),
-              );
+                });
+              });
       }
       track = {
         ...track,
@@ -365,6 +485,7 @@ export class TrackService {
       await this.trackDownloadQueue.add('', track, {
         jobId: 'id-' + track.id + '-' + Date.now(),
       });
+      webActivity.result(track.id, 'ready');
     } catch (error) {
       await this.handleFailure(track, error, 'search');
     }
@@ -376,8 +497,8 @@ export class TrackService {
     cookiesFirst = false,
   ): Promise<void> {
     return this.keyedWork.run(
-      this.utilsService.trackFileKey(track.artist, track.name),
-      () => this.downloadFromYoutubeSerial(track, retryAttempt, cookiesFirst),
+      sourceKey(track),
+      () => webActivity.run(track, () => this.downloadFromYoutubeSerial(track, retryAttempt, cookiesFirst)),
     );
   }
 
@@ -399,7 +520,7 @@ export class TrackService {
       track = { ...track, status: TrackStatusEnum.Queued, retryAt: null };
       await this.update(track.id, track);
     }
-    const destination = this.getFolderName(track, track.playlist);
+    let destination = this.getFolderName(track, track.playlist);
     try {
       track = await this.withSourceDuration(track);
       if (
@@ -413,21 +534,28 @@ export class TrackService {
         });
         return;
       }
-      await this.youtubeService.downloadAndFormat(
+      webActivity.phase(track, 'waiting-download');
+      const publication = await this.youtubeService.downloadAndFormat(
         track,
         destination,
-        (progress) =>
+        (progress) => {
+          webActivity.phase(track, 'downloading', progress.percentage);
           this.io.emit('trackProgress', {
             id: track.id,
             percent: Math.round(progress.percentage),
-          }),
-        () =>
-          this.update(track.id, {
+          });
+        },
+        () => {
+          webActivity.phase(track, 'downloading', 0);
+          return this.update(track.id, {
             ...track,
             status: TrackStatusEnum.Downloading,
-          }),
+          });
+        },
         youtubeRetryNeedsCookiesFirst(cookiesFirst, track.error || ''),
       );
+      destination = publication.path;
+      track.audioFilename = basename(destination);
       if (!isNonEmptyFile(destination))
         throw new Error('YouTube attempt did not produce a verified result');
       // The shared engine verified source duration and final MP3 before atomic,
@@ -443,8 +571,9 @@ export class TrackService {
         'done',
       );
       this.rememberCompletedAudio(track, destination);
+      webActivity.result(track.id, publication.created ? 'downloaded' : 'reused');
       const coverUrl = track.coverUrl || track.playlist?.coverUrl;
-      if (coverUrl) {
+      if (coverUrl && publication.created) {
         try {
           await this.youtubeService.addImage(
             destination,
@@ -467,6 +596,7 @@ export class TrackService {
     kind: 'search' | 'download',
   ): Promise<void> {
     const original = this.tidyError(raw);
+    webActivity.result(track.id, 'failed');
     const error = /^No YouTube result$/i.test(original)
       ? 'No YouTube result'
       : classify(original);
@@ -594,6 +724,7 @@ export class TrackService {
   }
 
   private async withSourceDuration(track: TrackEntity): Promise<TrackEntity> {
+    webActivity.phase(track, 'metadata');
     if (!this.spotifyDurationService)
       throw durationFailure('Spotify source metadata service is unavailable');
     const durationMs = await this.spotifyDurationService.ensure(track);
@@ -611,17 +742,8 @@ export class TrackService {
       acquisitionState: null,
       retryAt: null,
     };
-    const prior = await this.store().get(
-      this.utilsService.trackFileKey(track.artist, track.name),
-    );
-    if (prior && !['saved', 'done'].includes(prior.state))
-      await this.checkpoint(completed, 'done');
-    else if (
-      track.status !== TrackStatusEnum.Completed ||
-      track.error ||
-      track.acquisitionState
-    )
-      await this.update(track.id, completed);
+    // Checkpoint the source, never clear another edition's legacy outcome.
+    await this.checkpoint(completed, 'done');
   }
 
   async verifyLocalAudio(track: TrackEntity, path: string): Promise<number> {
@@ -633,10 +755,7 @@ export class TrackService {
   }
 
   private rememberCompletedAudio(track: TrackEntity, path: string): void {
-    if (!isNonEmptyFile(path)) return;
-    void this.completedAudioIndex?.then((index) => {
-      index.set(this.utilsService.trackFileKey(track.artist, track.name), path);
-    });
+    this.mediaIndex = null;
   }
 
   private async completeFromLocalAudio(track: TrackEntity): Promise<{
@@ -645,77 +764,47 @@ export class TrackService {
   } | null> {
     let persisted = await this.get(track.id);
     if (!persisted) return null;
+    webActivity.phase(persisted, 'preparing');
     if (!persisted.name || !persisted.artist || !persisted.playlist) {
       return { track: persisted, completed: false };
     }
 
-    const destination = this.getFolderName(persisted, persisted.playlist);
-    const source = await this.completedAudioSource(persisted, destination);
-    if (!source) return { track: persisted, completed: false };
-    // Already-completed physical files are historical state, not a new ingest.
-    // Any newly completed occurrence (including a local copy) must pass the
-    // same source and final-duration gate, without altering a wrong original.
-    if (source !== destination) {
+    let media = await this.localMedia(persisted);
+    if (media.source && media.verification === 'unverified') {
       persisted = await this.withSourceDuration(persisted);
-      try {
-        await this.youtubeService.verifyAudioDuration(
-          source,
-          persisted.durationMs,
-        );
-      } catch (error) {
-        // Leave an unrelated wrong-length local source untouched and acquire a
-        // suitable recording instead; never copy it into the destination.
-        if (this.tidyError(error) === DURATION_REJECTED)
-          return { track: persisted, completed: false };
-        throw error;
-      }
+      media = await this.localMedia(persisted);
     }
-    if (
-      !reuseCompletedTrackFile(
-        source,
-        destination,
-        this.utilsService.getRootDownloadsPath(),
-      )
-    ) {
+    const { source, destination } = media;
+    persisted = { ...persisted, audioFilename: basename(destination), durationMs: media.expectedMs || persisted.durationMs };
+    await this.repository.update(persisted.id, { audioFilename: persisted.audioFilename, durationMs: persisted.durationMs });
+    if (!source) return { track: persisted, completed: false };
+    webActivity.phase(persisted, 'copying');
+    const savedPath = reuseCompletedTrackMedia(persisted, media, this.utilsService.getRootDownloadsPath());
+    if (!savedPath) {
       return { track: persisted, completed: false };
     }
 
-    this.rememberCompletedAudio(persisted, destination);
+    persisted.audioFilename = basename(savedPath);
+    this.rememberCompletedAudio(persisted, savedPath);
     await this.reconcileExistingMedia(persisted);
+    webActivity.result(track.id, source === savedPath ? 'checked' : 'reused');
     this.logger.debug(
       `Reused local MP3 for ${persisted.artist} - ${persisted.name}`,
     );
     return { track: persisted, completed: true };
   }
 
-  private async completedAudioSource(
-    track: TrackEntity,
-    destination: string,
-  ): Promise<string | null> {
-    if (isNonEmptyFile(destination)) return destination;
-    if (!this.completedAudioIndex) {
-      this.completedAudioIndex = this.buildCompletedAudioIndex();
+  async localMedia(track: TrackEntity) {
+    const root = this.utilsService.getRootDownloadsPath();
+    const data = dirname(this.configService.get<string>(EnvironmentEnum.DB_PATH) || resolve(process.cwd(), 'data/spooty.sqlite'));
+    if (!this.mediaIndex || this.mediaIndex.root !== root || Date.now() - this.mediaIndex.at > 30000) {
+      this.mediaIndex = { root, at: Date.now(), value: new LocalMediaIndex([root],
+        this.configService.get<string>('SPOTIFY_TRACK_METADATA_PATH') || process.env.SPOTIFY_TRACK_METADATA_PATH || join(data, 'spotify-track-metadata'),
+        mediaDurationCache(join(data, 'media-duration-cache')),
+        this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3') };
     }
-    const key = this.utilsService.trackFileKey(track.artist, track.name);
-    const source = (await this.completedAudioIndex).get(key);
-    return source && existsSync(source) && isNonEmptyFile(source)
-      ? source
-      : null;
-  }
-
-  private async buildCompletedAudioIndex(): Promise<Map<string, string>> {
-    const index = new Map<string, string>();
-    const rows = await this.repository.find({
-      where: { status: TrackStatusEnum.Completed },
-      relations: ['playlist'],
-    });
-    for (const row of rows) {
-      if (!row.artist || !row.name || !row.playlist) continue;
-      const path = this.getFolderName(row, row.playlist);
-      if (!isNonEmptyFile(path)) continue;
-      index.set(this.utilsService.trackFileKey(row.artist, row.name), path);
-    }
-    return index;
+    const folder = track.playlist?.isTrack ? root : this.utilsService.getPlaylistFolderPath(track.playlist?.name || 'unknown_playlist');
+    return this.mediaIndex.value.resolve(track, folder);
   }
 
   private tidyError(err: unknown): string {
@@ -726,7 +815,8 @@ export class TrackService {
   getTrackFileName(track: TrackEntity): string {
     const format =
       this.configService.get<string>(EnvironmentEnum.FORMAT) || 'mp3';
-    return `${this.utilsService.trackFileBase(track.artist, track.name)}.${format}`;
+    if (track.audioFilename && basename(track.audioFilename) === track.audioFilename && track.audioFilename.endsWith(`.${format}`)) return track.audioFilename;
+    return `${sourceFileBase(track)}.${format}`;
   }
 
   async addCompletedTrack(

@@ -1,7 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
-import { LibraryDetail, LibraryListResponse } from '../models/library-playlist';
+import {
+  LibraryDetail,
+  LibraryListResponse,
+  SearchEvidence,
+} from '../models/library-playlist';
+import type { SpotifySyncStatus } from '../components/library-panel/spotify-sync-state';
+import type { SpotifyConnection } from '../models/spotify-connection';
 
 export interface AcquisitionSnapshot {
   at: string;
@@ -49,7 +55,58 @@ export interface AcquisitionOptions {
   networkRetries?: number;
 }
 
+export interface DownloadReceipt {
+  queued: number;
+  skipped: number;
+  /** Subset of skipped entries materialized from existing local MP3s. */
+  reused?: number;
+}
+
+export interface DownloadRequestStatus {
+  requestId: string;
+  state: 'preparing' | 'completed' | 'interrupted' | 'failed';
+  startedAt: number;
+  finishedAt: number | null;
+  destination: string;
+  receipt: DownloadReceipt | null;
+}
+
+export interface DownloadLocation {
+  path: string;
+  source: 'saved' | 'environment';
+}
+
 export interface YoutubePaceSnapshot {
+  webAdmission?: {
+    running: boolean;
+    startedAt: number | null;
+    done: number;
+    total: number | null;
+    phase: 'checking' | 'verifying' | 'copying' | 'queueing';
+    playlist: string;
+    artist: string;
+    name: string;
+  };
+  configurationError?: string | null;
+  webActivity?: {
+    active: Array<{
+      id: number;
+      artist: string;
+      name: string;
+      playlistName?: string;
+      phase: string;
+      startedAt: number;
+      percent?: number;
+    }>;
+    recent: Array<{ at: number; artist: string; name: string; result: string }>;
+    totals: { downloaded: number; reused: number; checked: number };
+    nextRetryAt: number | null;
+    since: number;
+  } | null;
+  webQueues?: {
+    search: { paused: boolean; active: number; queued?: number };
+    download: { paused: boolean; active: number; queued?: number };
+  } | null;
   searchConc: number;
   downloadConc: number;
   searchActive: number;
@@ -103,6 +160,27 @@ export class LibraryService {
 
   constructor(private readonly http: HttpClient) {}
 
+  searchEvidence(
+    artist: string,
+    name: string,
+    spotifyUrl?: string,
+  ): Observable<{ report: SearchEvidence | null }> {
+    return this.http.get<{ report: SearchEvidence | null }>(
+      '/api/track/search-evidence',
+      { params: { artist, name, ...(spotifyUrl ? { spotifyUrl } : {}) } },
+    );
+  }
+
+  downloadLocation(): Observable<DownloadLocation> {
+    return this.http.get<DownloadLocation>('/api/settings/download-location');
+  }
+
+  saveDownloadLocation(path: string): Observable<DownloadLocation> {
+    return this.http.post<DownloadLocation>('/api/settings/download-location', {
+      path,
+    });
+  }
+
   selectProvenProfile(): Observable<YoutubePaceSnapshot> {
     return this.http.post<YoutubePaceSnapshot>(
       '/api/youtube/profile/cli-proven',
@@ -110,25 +188,36 @@ export class LibraryService {
     );
   }
 
-  fetch(): Observable<LibraryListResponse> {
+  resumeWebQueues(): Observable<YoutubePaceSnapshot> {
+    return this.http.post<YoutubePaceSnapshot>('/api/youtube/queues/resume', {
+      scope: 'all-web-queues',
+    });
+  }
+
+  fetch(scanId?: string, refresh = false): Observable<LibraryListResponse> {
     return this.http
-      .get<LibraryListResponse>('/api/library')
+      .get<LibraryListResponse>(`/api/library/view${scanId ? '?scan=' + encodeURIComponent(scanId) : refresh ? '?refresh=1' : ''}`)
       .pipe(tap((data) => this.subject.next(data)));
   }
 
   download(
     uris: string[],
     options: AcquisitionOptions = {},
-  ): Observable<{ queued: number; skipped: number }> {
-    return this.http.post<{ queued: number; skipped: number }>(
+    requestId?: string,
+  ): Observable<DownloadReceipt> {
+    if (requestId) return this.http.post<DownloadReceipt>('/api/library/download', { uris, ...options }, {
+      headers: { 'X-Spooty-Request-Id': requestId },
+    });
+    return this.http.post<DownloadReceipt>(
       '/api/library/download',
       { uris, ...options },
     );
   }
 
-  detail(id: string): Observable<LibraryDetail> {
+  detail(id: string, scanId?: string): Observable<LibraryDetail> {
     return this.http.get<LibraryDetail>(
-      `/api/library/detail/${encodeURIComponent(id)}`,
+      scanId ? `/api/library/view/detail/${encodeURIComponent(id)}?scan=${encodeURIComponent(scanId)}`
+        : `/api/library/detail/${encodeURIComponent(id)}`,
     );
   }
 
@@ -146,10 +235,16 @@ export class LibraryService {
     }>(`/api/library/resync/${encodeURIComponent(id)}`, {});
   }
 
-  resyncAll(): Observable<{ started: boolean; already?: boolean }> {
-    return this.http.post<{ started: boolean; already?: boolean }>(
+  resyncAll(): Observable<{ started: boolean; already?: boolean; operationId?: string }> {
+    return this.http.post<{ started: boolean; already?: boolean; operationId?: string }>(
       '/api/library/resync-all',
       {},
+    );
+  }
+
+  syncPlaylist(id: string): Observable<{ started: boolean; already?: boolean; operationId?: string }> {
+    return this.http.post<{ started: boolean; already?: boolean; operationId?: string }>(
+      `/api/library/sync/playlist/${encodeURIComponent(id)}`, {},
     );
   }
 
@@ -177,45 +272,43 @@ export class LibraryService {
 
   downloadRemaining(
     options: AcquisitionOptions = {},
-  ): Observable<{ queued: number; skipped: number }> {
-    return this.http.post<{ queued: number; skipped: number }>(
+    requestId?: string,
+  ): Observable<DownloadReceipt> {
+    if (requestId) return this.http.post<DownloadReceipt>('/api/library/download-remaining', options, {
+      headers: { 'X-Spooty-Request-Id': requestId },
+    });
+    return this.http.post<DownloadReceipt>(
       '/api/library/download-remaining',
       options,
     );
   }
 
-  syncLibrary(): Observable<{ started: boolean; already?: boolean }> {
-    return this.http.post<{ started: boolean; already?: boolean }>(
+  downloadRequestStatus(requestId: string): Observable<DownloadRequestStatus> {
+    return this.http.get<DownloadRequestStatus>(`/api/library/download-requests/${encodeURIComponent(requestId)}`);
+  }
+
+  syncLibrary(): Observable<{ started: boolean; already?: boolean; operationId?: string }> {
+    return this.http.post<{ started: boolean; already?: boolean; operationId?: string }>(
       '/api/library/sync',
       {},
     );
+  }
+
+  spotifyConnection(): Observable<SpotifyConnection> {
+    return this.http.get<SpotifyConnection>('/api/library/spotify-connection');
+  }
+
+  connectSpotifyChrome(): Observable<SpotifyConnection> {
+    return this.http.post<SpotifyConnection>('/api/library/spotify-connection', {
+      confirm: 'allow-one-chrome-connection',
+    });
   }
 
   youtubePace(): Observable<YoutubePaceSnapshot> {
     return this.http.get<YoutubePaceSnapshot>('/api/youtube/pace');
   }
 
-  syncLibraryStatus(): Observable<{
-    running: boolean;
-    done: number;
-    total: number;
-    discovered: number;
-    changed: number;
-    errors: string[];
-    current: string;
-    startedAt: string | null;
-    finishedAt: string | null;
-  }> {
-    return this.http.get<{
-      running: boolean;
-      done: number;
-      total: number;
-      discovered: number;
-      changed: number;
-      errors: string[];
-      current: string;
-      startedAt: string | null;
-      finishedAt: string | null;
-    }>('/api/library/sync');
+  syncLibraryStatus(): Observable<SpotifySyncStatus> {
+    return this.http.get<SpotifySyncStatus>('/api/library/sync');
   }
 }

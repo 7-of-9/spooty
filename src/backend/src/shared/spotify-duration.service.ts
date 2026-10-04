@@ -7,6 +7,7 @@ import {
   positiveDurationMs,
 } from './acquisition/spotify-duration';
 import { DURATION_SOURCE_MISSING } from './acquisition/duration-policy';
+import { spotifySourceId } from './acquisition/source-id';
 
 export type SpotifyDurationMetadata = {
   version: 1;
@@ -20,11 +21,7 @@ export type SpotifyDurationMetadata = {
 export function spotifyTrackId(
   value: string | undefined | null,
 ): string | null {
-  return (
-    String(value || '').match(
-      /^(?:https:\/\/open\.spotify\.com\/(?:intl-[^/]+\/)?track\/|spotify:track:)([A-Za-z0-9]{22})(?:[?#].*)?$/,
-    )?.[1] || null
-  );
+  return spotifySourceId(value);
 }
 export function normalizedSpotifyIdentity(value: string): string {
   return String(value || '')
@@ -65,12 +62,16 @@ export class SpotifyDurationService {
     name: string;
     artist: string;
     durationMs?: number | null;
+    searchAlbum?: string;
   }): Promise<number> {
     const id = spotifyTrackId(track.spotifyUrl);
-    const ids = [...(track.spotifyIds || []), ...(id ? [id] : [])];
+    const ids = id ? [id] : [...new Set(track.spotifyIds || [])];
     if (!ids.length) throw new Error(DURATION_SOURCE_MISSING);
     try {
-      return await this.resolveDuration({ ...track, spotifyIds: ids });
+      const song: any = { ...track, spotifyIds: ids };
+      const duration = await this.resolveDuration(song);
+      track.searchAlbum = song.album;
+      return duration;
     } catch {
       throw new Error(DURATION_SOURCE_MISSING);
     } // never persist session diagnostics
