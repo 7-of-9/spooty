@@ -52,7 +52,7 @@ export default {
           if (!validKey(key)) return json({ error: 'Invalid key' }, 400);
           const length = Number(request.headers.get('content-length'));
           if (!length || length > 32 * 1024 * 1024) return json({ error: 'Use multipart for large objects' }, 413);
-          await env.BUCKET.put(key, request.body, metadata({ contentType: request.headers.get('content-type'), sha256: request.headers.get('x-file-sha256'), filename: request.headers.get('x-file-name'), bytes: length }));
+          await env.BUCKET.put(key, request.body, metadata({ contentType: request.headers.get('content-type'), sha256: request.headers.get('x-file-sha256'), filename: decodeURIComponent(request.headers.get('x-file-name') || ''), bytes: length }));
           return json({ ok: true, key });
         }
         if (url.pathname === '/admin/uploads/part' && request.method === 'PUT') {
