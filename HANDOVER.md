@@ -1,5 +1,53 @@
 # Handover: Spooty library MP3 backfill + YouTube throughput
 
+## Latest — 6 October 2026: all five playlist 50 versions regenerated and public DJ handoff published
+
+Public page: https://fifty-dj-room.dm-ae80.chatgpt.site
+The user explicitly authorized public track/mix downloads and GitHub publication.
+
+- Playlist `50` (`4tlyiGCRW6LH5BqF0F30Ib`) refreshed at 06:40:55 Bangkok:
+  99 -> 100 tracks, verified membership, no removals. Joe Satriani — Love Thing
+  was reused from existing duration-matched local audio through shared media
+  identity/materialization. All 100 source tracks are physically present.
+- Regenerated A / Energy arc v2 (S6), B / Genre waves v2 (S7), Claude_Best v3
+  (S8), Claude_Best / energy arc v4 (S9), and Claude_Best / Medley v7. Each has
+  all 100 distinct source songs. A and S9 have identical audio: complete render
+  input equality, including ordered source hashes and warp inputs, justified
+  reuse; the public page discloses this. Full mixes last approximately 6h45–48m.
+- Medley v7: 76m32s, 100 chapters, 99 transitions; selected transition checks
+  are 28 pass, 71 warnings, zero failures. Whole-mix V13 alignment STILL FAILS:
+  body downbeats 90.69% within 20 ms, below 95%; landings 95.96% within 40 ms
+  pass their 90% threshold. Failed proof and warnings remain in public JSON/CSV.
+  Do not describe this as fully beat-verified or as having passed listening QA.
+- Public handoff has 100 individually playable/downloadable MP3s, a 947,324,577
+  byte ZIP, track CSV/M3U, Spotify IDs, ISRCs and exact-file SHA-256 hashes, plus
+  all five rendered mixes, chapter/order lists, transition CSVs, JSON and CUEs.
+  ISRCs describe the intended Spotify recording; supplied audio has not been
+  acoustically verified against that master. Source MP3s were not retagged.
+- Anonymous public readback verified all 100 source hashes (one interrupted
+  first transfer retained alongside its successful retry), ZIP and three
+  distinct full-mix hashes, plus the medley hash and seek ranges. S9 header and
+  ranges passed, with its identical audio independently established locally.
+  Public catalogs exactly match local bytes and show all five mixes ready.
+- Package: `data/dj-share-50/`; upload/public-readback proofs and final record:
+  `data/dj-share-upload-state/`. Generation/preservation proof:
+  `data/automix/builds/regen-20261006/post-run-verification.json`.
+- Sites project: `appgprj_6ac45ae0b0ac8191978e4854d7049c85`; reuse this registered
+  site for updates. Its independent checkout is `dj-share-site/`, mirrored to
+  GitHub `7-of-9/spooty` branch `dj-share-site` at `17f3b41`. Root generation,
+  export and verification tools are on `main`. Upload secrets stay out of Git.
+- Validation includes 10 Site tests, two ISRC fixtures, 35 CDP/source guards,
+  real catalog DOM wiring/search, and actual media/readback checks. Browser
+  listening/full browser acceptance is not claimed. Only the approved singleton
+  was used for the authorized Spotify refresh; no alternate browser was opened.
+- Prior saved versions, manual history, overrides and ratings were preserved;
+  all seven medleys remain. Build processes exited. Local audition server on
+  4300 remains active; medley: http://127.0.0.1:4300/?medley=20261006-105203
+- Catalog: 19,067/19,732 saved, 173.338447557 GB unique-inode MP3s in the active
+  `/Users/dom/Desktop/mp3_downloads` root. No actionable bulk work; 665 parked
+  outcomes remain. No queue was resumed or parked search reopened. Bulk ETA:
+  none; regeneration and publication complete. Beat-alignment repair is separate.
+
 ## Latest — 3 October 2026, 10:50 Bangkok: playlist 50 refreshed, medley v6 published
 
 Claude's latest work was the automix v6 continuation, not the older bulk-acquisition
