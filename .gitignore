@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.sites-runtime/
+.wrangler/
+.env*
+!.env.example
+.DS_Store
