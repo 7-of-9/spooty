@@ -3,6 +3,7 @@ import HTML from './page.mjs';
 const security = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { ...security, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const validKey = key => typeof key === 'string' && key.length < 900 && !/[\x00-\x1f\\]/.test(key) && !key.split('/').some(p => !p || p === '.' || p === '..') && /^(audio|mixes|exports|catalog)\//.test(key);
+const encodedFilename = name => encodeURIComponent(name).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 const metadata = body => ({ httpMetadata: { contentType: body.contentType || 'application/octet-stream' }, customMetadata: { sha256: String(body.sha256 || ''), filename: String(body.filename || '').replace(/[\r\n]/g, ''), bytes: String(body.bytes || '') } });
 
 export function byteRange(header, size) {
@@ -26,7 +27,7 @@ async function media(request, env, key, download = false) {
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Cache-Control', key.startsWith('catalog/') ? 'no-store' : 'public, max-age=3600');
   if (head.customMetadata?.sha256) headers.set('X-File-SHA256', head.customMetadata.sha256);
-  if (download) headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(head.customMetadata?.filename || key.split('/').pop())}`);
+  if (download) headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename(head.customMetadata?.filename || key.split('/').pop())}`);
   if (request.headers.get('if-none-match') === head.httpEtag) return new Response(null, { status: 304, headers });
   const rangeHeader = request.headers.get('range');
   const ifRange = request.headers.get('if-range');

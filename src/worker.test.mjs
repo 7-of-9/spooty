@@ -17,9 +17,9 @@ test('every administrative write requires the secret even when storage is absent
   }
 });
 
-function bucket() {
+function bucket(filename = 'A song.mp3') {
   const data = new TextEncoder().encode('0123456789');
-  const info = { size: 10, httpEtag: '"fixture"', customMetadata: { filename: 'A song.mp3', sha256: 'fixture-hash' }, writeHttpMetadata(h) { h.set('Content-Type', 'audio/mpeg'); } };
+  const info = { size: 10, httpEtag: '"fixture"', customMetadata: { filename, sha256: 'fixture-hash' }, writeHttpMetadata(h) { h.set('Content-Type', 'audio/mpeg'); } };
   return { head: async () => info, get: async (key, options) => ({ ...info, body: options?.range ? data.slice(options.range.offset, options.range.offset + options.range.length) : data }) };
 }
 
@@ -34,6 +34,14 @@ test('public audio serves ranged bytes, correct headers, and full download', asy
   const full = await worker.fetch(new Request('https://dj.test/media/audio%2Fsong.mp3?download=1'), env);
   assert.equal(await full.text(), '0123456789');
   assert.match(full.headers.get('content-disposition'), /attachment.*A%20song.mp3/);
+});
+
+test('download filenames preserve punctuation through standards-compliant encoding', async () => {
+  const filename = "The O'Jays - It's Love (Trippin')!.mp3";
+  const r = await worker.fetch(new Request('https://dj.test/media/audio%2Fsong.mp3?download=1'), { BUCKET: bucket(filename) });
+  const encoded = r.headers.get('content-disposition').split("UTF-8''")[1];
+  assert.equal(decodeURIComponent(encoded), filename);
+  assert.doesNotMatch(encoded, /[!'()*]/);
 });
 
 test('HEAD, stale If-Range, not-modified and unsatisfiable ranges behave correctly', async () => {
