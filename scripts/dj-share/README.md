@@ -108,3 +108,8 @@ streams and hashes the complete downloads, validates filenames and response
 headers, and compares beginning/middle/end range requests against the local
 files. Evidence is saved after every result, including failures. Use separate
 output paths when verifying successive batches to retain each earlier result.
+Use `--track SPOTIFY_ID` for a selective source retry. Short response bodies are
+retried within the configured bound, with observed/expected byte counts retained;
+a complete download must still match its expected hash. `--ranges-only` performs
+HEAD and three range checks and explicitly does not claim a full remote hash
+readback. It is useful for a second URL exposing already verified identical audio.

@@ -27,7 +27,15 @@ RANGE_SIZE = 4096
 
 
 class VerificationError(Exception):
-    pass
+    def __init__(self, message, details=None):
+        super().__init__(message)
+        self.details = details
+
+
+class TruncatedBody(VerificationError):
+    def __init__(self, observed, expected):
+        super().__init__(f"Truncated body: {observed} of {expected} bytes",
+                         {"observedBytes": observed, "expectedBytes": expected})
 
 
 def require(condition, message):
@@ -59,8 +67,13 @@ def select_files(package, args):
                       "bytes": size, "sha256": digest, "filename": filename or local.name,
                       "contentType": "application/zip" if kind == "archive" else "audio/mpeg"})
 
-    if args.tracks:
+    if args.tracks or args.track:
+        wanted = set(args.track)
+        known = {track["spotifyId"] for track in manifest["tracks"]}
+        require(wanted <= known, "Unknown track IDs: " + ", ".join(sorted(wanted - known)))
         for track in manifest["tracks"]:
+            if not args.tracks and track["spotifyId"] not in wanted:
+                continue
             audio = track["audio"]
             add("track", track["spotifyId"], audio["path"], audio["path"],
                 audio["bytes"], audio["sha256"], audio["filename"])
@@ -77,16 +90,16 @@ def select_files(package, args):
             mix = mixes[identity]
             require(mix.get("status") == "ready", f"Mix is not ready: {identity}")
             add("mix", identity, mix["audioPath"], mix["audioPath"], mix["bytes"], mix["sha256"])
-    require(files, "Select --tracks, --archive or --mix ID")
+    require(files, "Select --tracks, --track ID, --archive or --mix ID")
     require(len({f["key"] for f in files}) == len(files), "Duplicate public file keys")
     return files
 
 
-def retry_request(url, consume, retries, extra_headers=None):
+def retry_request(url, consume, retries, extra_headers=None, method="GET"):
     attempts = []
     for attempt in range(retries + 1):
         try:
-            request = urllib.request.Request(url, headers={
+            request = urllib.request.Request(url, method=method, headers={
                 "User-Agent": USER_AGENT, "Accept-Encoding": "identity",
                 **(extra_headers or {}),
             })
@@ -96,16 +109,22 @@ def retry_request(url, consume, retries, extra_headers=None):
             if attempts:
                 result["transientErrors"] = attempts
             return result
+        except TruncatedBody as error:
+            attempts.append({"attempt": attempt + 1, "error": "TruncatedBody", **error.details})
+            if attempt == retries:
+                raise VerificationError(str(error), {"attempts": attempts}) from None
+            wait = min(5, 2 ** attempt)
         except urllib.error.HTTPError as error:
+            attempts.append({"attempt": attempt + 1, "error": f"HTTP {error.code}"})
             if error.code not in TRANSIENT or attempt == retries:
-                raise VerificationError(f"HTTP {error.code}") from None
-            attempts.append(f"HTTP {error.code}")
+                raise VerificationError(f"HTTP {error.code}", {"attempts": attempts}) from None
             retry_after = error.headers.get("Retry-After", "")
             wait = min(10, int(retry_after)) if retry_after.isdigit() else min(5, 2 ** attempt)
         except (urllib.error.URLError, OSError, socket.timeout, http.client.HTTPException) as error:
+            attempts.append({"attempt": attempt + 1, "error": type(error).__name__})
             if attempt == retries:
-                raise VerificationError(f"Network read failed: {type(error).__name__}") from None
-            attempts.append(type(error).__name__)
+                raise VerificationError(f"Network read failed: {type(error).__name__}",
+                                        {"attempts": attempts}) from None
             wait = min(5, 2 ** attempt)
         time.sleep(wait)
     raise VerificationError("Request attempts exhausted")
@@ -132,9 +151,10 @@ def validate_headers(response, item, expected_status, length, attachment=False):
             "advertisedSha256": advertised}
 
 
-def verify_file(origin, package, item, retries):
+def verify_file(origin, package, item, retries, ranges_only=False):
     started = time.monotonic()
-    result = {**item, "startedAt": now(), "status": "running"}
+    result = {**item, "startedAt": now(), "status": "running",
+              "mode": "headers-and-ranges" if ranges_only else "full-readback-and-ranges"}
     url = origin + "/media/" + urllib.parse.quote(item["key"], safe="")
 
     def consume_full(response):
@@ -148,13 +168,22 @@ def verify_file(origin, package, item, retries):
             count += len(chunk)
             require(count <= item["bytes"], "Download exceeded expected size")
             digest.update(chunk)
-        require(count == item["bytes"], f"Truncated body: {count} bytes")
+        if count < item["bytes"]:
+            raise TruncatedBody(count, item["bytes"])
         observed = digest.hexdigest()
-        require(observed == item["sha256"], "Downloaded SHA-256 mismatch")
+        if observed != item["sha256"]:
+            raise VerificationError("Downloaded SHA-256 mismatch",
+                                    {"observedSha256": observed, "expectedSha256": item["sha256"],
+                                     "observedBytes": count})
         return {"status": "passed", "bytesRead": count, "sha256": observed, "headers": headers}
 
     try:
-        result["download"] = retry_request(url + "?download=1", consume_full, retries)
+        if ranges_only:
+            result["head"] = retry_request(url + "?download=1", lambda response: {
+                "status": "passed", "headers": validate_headers(
+                    response, item, 200, item["bytes"], attachment=True)}, retries, method="HEAD")
+        else:
+            result["download"] = retry_request(url + "?download=1", consume_full, retries)
         result["ranges"] = []
         length = min(RANGE_SIZE, item["bytes"])
         samples = [("beginning", 0), ("middle", max(0, (item["bytes"] - length) // 2)),
@@ -171,6 +200,8 @@ def verify_file(origin, package, item, retries):
                     require(response.headers.get("Content-Range") == content_range,
                             "Content-Range mismatch")
                     body = response.read(length + 1)
+                    if len(body) < length:
+                        raise TruncatedBody(len(body), length)
                     require(body == expected, f"{label} range bytes differ from local file")
                     return {"position": label, "status": "passed", "offset": offset,
                             "length": len(body), "contentRange": content_range,
@@ -182,6 +213,8 @@ def verify_file(origin, package, item, retries):
     except Exception as error:
         result["status"] = "failed"
         result["error"] = str(error) if isinstance(error, VerificationError) else type(error).__name__
+        if isinstance(error, VerificationError) and error.details:
+            result["failureDetails"] = error.details
     result["finishedAt"] = now()
     result["elapsedSeconds"] = round(time.monotonic() - started, 3)
     return result
@@ -199,11 +232,15 @@ def main():
     parser.add_argument("--origin", required=True)
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--tracks", action="store_true")
+    parser.add_argument("--track", action="append", default=[], metavar="SPOTIFY_ID",
+                        help="Verify only these source tracks; repeat to select several")
     parser.add_argument("--archive", action="store_true")
     parser.add_argument("--mix", action="append", default=[], metavar="ID")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--concurrency", type=int, choices=(1, 2, 3, 4), default=2)
     parser.add_argument("--retries", type=int, choices=range(4), default=2)
+    parser.add_argument("--ranges-only", action="store_true",
+                        help="Check download headers and three ranges without claiming a full readback")
     args = parser.parse_args()
     parsed = urllib.parse.urlsplit(args.origin)
     require(parsed.scheme == "https" and parsed.netloc and not parsed.username
@@ -214,15 +251,19 @@ def main():
     items = select_files(package, args)
     started = time.monotonic()
     evidence = {"schemaVersion": 1, "origin": origin, "startedAt": now(),
-                "selection": {"tracks": args.tracks, "archive": args.archive, "mixes": args.mix},
+                "selection": {"tracks": args.tracks, "trackIds": args.track,
+                              "archive": args.archive, "mixes": args.mix},
                 "concurrency": args.concurrency, "maxRetries": args.retries,
                 "expectedFiles": len(items), "expectedBytes": sum(i["bytes"] for i in items),
-                "verification": "Full streamed SHA-256 readback plus beginning/middle/end byte comparisons",
+                "verification": ("HEAD and beginning/middle/end byte comparisons; no full remote SHA-256 readback"
+                                 if args.ranges_only else
+                                 "Full streamed SHA-256 readback plus beginning/middle/end byte comparisons"),
                 "status": "running", "files": []}
     save_evidence(args.out, evidence)
     print(json.dumps({"status": "started", "files": len(items), "bytes": evidence["expectedBytes"]}), flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-        futures = {pool.submit(verify_file, origin, package, item, args.retries): item for item in items}
+        futures = {pool.submit(verify_file, origin, package, item, args.retries, args.ranges_only): item
+                   for item in items}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             evidence["files"].append(result)
