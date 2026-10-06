@@ -260,6 +260,16 @@ function coverUrl(meta) {
   return hex ? `https://i.scdn.co/image/${hex}` : null;
 }
 
+/** Return only an unambiguous, well-formed public recording identifier. */
+export function spotifyIsrc(meta) {
+  const entries = meta?.external_id || meta?.externalId || [];
+  const ids = new Set((Array.isArray(entries) ? entries : [entries])
+    .filter((entry) => String(entry?.type || '').toUpperCase() === 'ISRC')
+    .map((entry) => String(entry?.id || '').replace(/-/g, '').trim().toUpperCase())
+    .filter((id) => /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/.test(id)));
+  return ids.size === 1 ? [...ids][0] : null;
+}
+
 async function hydrateOne(token, trackId) {
   const gid = idToGid(trackId);
   const res = await sessionFetch(
@@ -277,6 +287,7 @@ async function hydrateOne(token, trackId) {
     artist,
     durationMs: Number.isInteger(meta.duration) && meta.duration > 0 ? meta.duration : undefined,
     album: typeof meta.album?.name === 'string' ? meta.album.name : undefined,
+    isrc: spotifyIsrc(meta),
     coverUrl: coverUrl(meta),
     href: `https://open.spotify.com/track/${trackId}`,
   };
@@ -289,7 +300,8 @@ export async function getTrackDurationMetadata(trackId) {
   const track = await hydrateOne(await getAccessToken(), trackId);
   if (!track?.durationMs) throw new Error('Spotify source duration unavailable');
   return { version: 1, spotifyId: trackId, name: track.name, artist: track.artist,
-    durationMs: track.durationMs, album: track.album, fetchedAt: new Date().toISOString() };
+    durationMs: track.durationMs, album: track.album, isrc: track.isrc,
+    fetchedAt: new Date().toISOString() };
 }
 
 async function mapPool(items, limit, fn) {

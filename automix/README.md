@@ -38,6 +38,19 @@ Requires Python 3.12 via `uv`, `/opt/homebrew/bin/ffmpeg` and `brew install rubb
 Settings, per-transition overrides and manual order persist in
 `data/automix/sessions/<folder>-<hash>/session.json`.
 
+To regenerate every saved set family against the complete current folder, keep
+the local audition server running with the refreshed track list and run:
+
+```sh
+uv run python scripts/regenerate_sets.py ~/Desktop/mp3_downloads/50 --out ../data/automix/builds/refresh-50
+```
+
+This adds new versions, renders the full sets sequentially, then prepares and
+builds a verified highlight medley. Old versions, edits and ratings stay in
+place. `regeneration.json` records progress, MP3 paths and hashes, cue sheets,
+orders, transition reports and verification results. Reusing the same output
+directory resumes completed stages; start only while the server is idle.
+
 ## Highlight medleys
 
 The medley engine composes transitions between song highlights, using cached

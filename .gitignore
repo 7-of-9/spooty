@@ -18,7 +18,7 @@ scripts/tmp-*.mjs
 !.env.example
 !.env.sample
 /2024/
-/.DS_Store
+.DS_Store
 /.playlist_tracks.json
 # Downloaded media is local-only, including copies outside downloads/.
 downloads/
@@ -35,3 +35,5 @@ downloads/
 /src/backend/dump.rdb
 # Local Netlify folder
 .netlify
+# Independent Sites checkout; mirrored to the dj-share-site GitHub branch.
+/dj-share-site/
