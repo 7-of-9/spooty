@@ -159,7 +159,19 @@ def main():
         common.write_json(destination / f"{slug}.json", details)
         write_csv(destination / f"{slug}-order.csv", list(order[0]), order)
         transition_fields = [key for key, value in transitions[0].items() if not isinstance(value, (list, dict))]
-        write_csv(destination / f"{slug}-transitions.csv", transition_fields, transitions)
+        transition_rows = transitions
+        if is_medley:
+            transition_fields += ["checkStatus", "warnings", "failures", "checkNotes", "blendScore"]
+            transition_rows = []
+            for transition in transitions:
+                checks = transition["verification"]
+                transition_rows.append({**transition,
+                    "checkStatus": checks.get("status"),
+                    "warnings": "; ".join(checks.get("warnings", [])),
+                    "failures": "; ".join(checks.get("failures", [])),
+                    "checkNotes": " | ".join(checks.get("notes", [])),
+                    "blendScore": checks.get("blendScore")})
+        write_csv(destination / f"{slug}-transitions.csv", transition_fields, transition_rows)
         mixes.append(row)
 
     # Never label the previous 99-song v6 output as the regenerated 100-song medley.

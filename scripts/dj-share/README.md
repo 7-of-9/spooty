@@ -51,6 +51,9 @@ match the regeneration proof. Each has a corrected CUE, order/transition CSVs an
 allowlisted JSON details. Medley warning data comes from the selected candidate;
 the whole-mix alignment result is published separately and is never hidden by
 successful file checks. Prior mixes are never substituted for pending new versions.
+The medley's transition CSV includes the selected candidate's check status,
+warnings, failures, explanatory notes and blend score so DJs can filter joins
+that need manual attention without parsing the JSON report.
 
 ## Public handoff
 
