@@ -44,6 +44,17 @@ test('download filenames preserve punctuation through standards-compliant encodi
   assert.doesNotMatch(encoded, /[!'()*]/);
 });
 
+test('handoff metadata stays fresh when pending renders become ready', async () => {
+  for (const key of ['catalog/mixes.json', 'mixes/a.json', 'mixes/a.cue', 'mixes/a-order.csv', 'exports/tracks.csv', 'exports/playlist.m3u8']) {
+    const r = await worker.fetch(new Request('https://dj.test/media/' + encodeURIComponent(key), { method: 'HEAD' }), { BUCKET: bucket() });
+    assert.equal(r.headers.get('cache-control'), 'no-store', key);
+  }
+  for (const key of ['audio/a.mp3', 'mixes/a.mp3', 'exports/playlist.zip']) {
+    const r = await worker.fetch(new Request('https://dj.test/media/' + encodeURIComponent(key), { method: 'HEAD' }), { BUCKET: bucket() });
+    assert.equal(r.headers.get('cache-control'), 'public, max-age=3600', key);
+  }
+});
+
 test('HEAD, stale If-Range, not-modified and unsatisfiable ranges behave correctly', async () => {
   const url = 'https://dj.test/media/audio%2Fsong.mp3', env = { BUCKET: bucket() };
   const head = await worker.fetch(new Request(url, { method: 'HEAD' }), env);

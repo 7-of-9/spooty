@@ -25,7 +25,7 @@ async function media(request, env, key, download = false) {
   head.writeHttpMetadata(headers);
   headers.set('ETag', head.httpEtag);
   headers.set('Accept-Ranges', 'bytes');
-  headers.set('Cache-Control', key.startsWith('catalog/') ? 'no-store' : 'public, max-age=3600');
+  headers.set('Cache-Control', /\.(mp3|zip)$/i.test(key) ? 'public, max-age=3600' : 'no-store');
   if (head.customMetadata?.sha256) headers.set('X-File-SHA256', head.customMetadata.sha256);
   if (download) headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename(head.customMetadata?.filename || key.split('/').pop())}`);
   if (request.headers.get('if-none-match') === head.httpEtag) return new Response(null, { status: 304, headers });
