@@ -53,6 +53,38 @@ directory resumes completed stages; start only while the server is idle.
 
 ## Highlight medleys
 
+For a chronological handover whose order must stay fixed, use:
+
+```sh
+uv run python scripts/render_timeline.py ../data/automix/handover/life-timeline-v1 \
+  --out ../data/automix/builds/life-timeline-v1
+```
+
+The handover contains `tracklist.json` with consecutive `pos`, `artist`, `title`
+and `handover_file` fields, and a `tracks/` directory. This command makes a full
+mix and excerpts targeting 60, 90 and 180 **source seconds per song**, including
+overlapping transitions. The full mix covers every decoded source interval from
+start to end; its short edge fades do not trim intros or outros. Excerpts start
+at measured musical boundaries, use fitted beat blends where appropriate, and
+keep native-tempo fades across incompatible keys or rhythms.
+
+Every source receives beat, key and loudness analysis. Exact existing structural
+results are reused; new structural scans use beat-synchronised chroma, MFCC
+timbre and loudness self-similarity. These boundaries are labelled `section`,
+not guessed verse/chorus labels. `--structure-method allin1` requests the slower
+MLX semantic model instead. Analysis methods and selected source intervals stay
+in the report. `--prepare-only` stops after analysis; `--prepared` uses its
+snapshot after validating the current handover and source hashes.
+
+Each mix has an MP3 with chapters, CUE, plan and verification report. Checks
+decode the entire encoded MP3, compare chapter names/times, verify source
+coverage/order and measure encoded overlaps in stereo. Beatmatched overlaps
+also receive independent beat detection; warnings remain in the report. These
+checks do not constitute listening acceptance or a whole-mix beat-grid pass.
+Completed builds resume only when their plans, source hashes and output hashes
+still match. Failed partial audio is retained; use a new output directory when
+changing the source playlist or build policy.
+
 The medley engine composes transitions between song highlights, using cached
 structure and separate drums, bass, vocals and other stems where available:
 
