@@ -82,3 +82,15 @@ test('multipart completion preserves required ordered part evidence', async () =
   const r = await worker.fetch(new Request('https://dj.test/admin/uploads/complete', { method: 'POST', headers: { Authorization: 'Bearer test-only', 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'audio/x', uploadId: 'fixture', parts: [{ partNumber: 2, etag: 'wrong-order' }] }) }), env);
   assert.equal(r.status, 400); assert.equal(completed, false);
 });
+
+test('timeline catalogs use distinct storage keys without changing playlist 50', async () => {
+  const seen=[];
+  const store=bucket();
+  const env={BUCKET:{...store,head:async key=>{seen.push(key);return store.head(key);}}};
+  for(const path of ['/manifest.json','/mixes.json','/life-timeline-manifest.json','/life-timeline-mixes.json']) {
+    const r=await worker.fetch(new Request('https://dj.test'+path),env);
+    assert.equal(r.status,200);
+    assert.equal(r.headers.get('cache-control'),'no-store');
+  }
+  assert.deepEqual(seen,['catalog/manifest.json','catalog/mixes.json','catalog/life-timeline-manifest.json','catalog/life-timeline-mixes.json']);
+});

@@ -85,6 +85,8 @@ export default {
       if (!env.BUCKET) return json({ error: 'The download library is temporarily unavailable.' }, 503);
       if (url.pathname === '/manifest.json') return media(request, env, 'catalog/manifest.json');
       if (url.pathname === '/mixes.json') return media(request, env, 'catalog/mixes.json');
+      if (url.pathname === '/life-timeline-manifest.json') return media(request, env, 'catalog/life-timeline-manifest.json');
+      if (url.pathname === '/life-timeline-mixes.json') return media(request, env, 'catalog/life-timeline-mixes.json');
       if (url.pathname.startsWith('/media/')) return media(request, env, decodeURIComponent(url.pathname.slice(7)), url.searchParams.get('download') === '1');
       return json({ error: 'Not found' }, 404);
     } catch (error) {
