@@ -51,8 +51,11 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
-def prepare(build, tracklist, output):
+def prepare(build, tracklist, output, labels=None):
     build, tracklist, output = build.resolve(), tracklist.resolve(), output.resolve()
+    labels = list(LABELS if labels is None else labels)
+    if not labels or len(labels) != len(set(labels)) or any(not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", label) for label in labels):
+        raise ValueError("Mix labels must be distinct simple basenames")
     source_root = (tracklist.parent / "tracks").resolve()
     handover = json.loads(tracklist.read_text())
     selected = handover["tracks"]
@@ -72,7 +75,7 @@ def prepare(build, tracklist, output):
                         "era": row.get("era", ""), "audio": "/files/" + key,
                         "bytes": path.stat().st_size, "sha256": digest})
     mixes = []
-    for label in LABELS:
+    for label in labels:
         report_path = checked_file(build, label + ".json")
         report = json.loads(report_path.read_text())
         audio = checked_file(build, label + ".mp3")
@@ -116,8 +119,28 @@ def prepare(build, tracklist, output):
                                     "decodedPeak": check.get("decodedPeak"),
                                     "continuity": json.dumps(check.get("continuity"), ensure_ascii=False),
                                     "renderedBeatAlignment": json.dumps(check.get("renderedBeatAlignment"), ensure_ascii=False)})
-        details = {"name": report["name"], "verification": proof, "order": order_rows,
-                   "transitions": transition_rows, "sourceWarnings": report.get("sourceWarnings", "")}
+        plan = report["plan"]
+        mode = plan.get("durationMode")
+        total_target = plan.get("totalTargetSeconds")
+        excerpt_target = plan.get("excerptTargetSeconds")
+        if mode == "total":
+            if not isinstance(total_target, (int, float)) or total_target <= 0:
+                raise ValueError("Total-duration mix requires its declared target")
+            if abs(proof["seconds"] - total_target) > 1:
+                raise ValueError("Verified duration differs from declared total-duration target")
+            display_title = (f"{total_target / 60:g}-minute mix · total duration" if total_target % 60 == 0
+                             else f"{total_target:g}-second mix · total duration")
+        elif excerpt_target:
+            mode = "per-track"
+            display_title = f"~{excerpt_target:g} seconds per song"
+        else:
+            mode = "full"
+            display_title = "Every track in full"
+        source_warnings = report.get("sourceWarnings") or []
+        semantics = {"durationMode": mode, "totalTargetSeconds": total_target,
+                     "excerptTargetSeconds": excerpt_target, "displayTitle": display_title}
+        details = {"name": report["name"], **semantics, "verification": proof, "order": order_rows,
+                   "transitions": transition_rows, "sourceWarnings": source_warnings}
         write_json(output / (label + ".json"), details)
         write_csv(output / (label + "-order.csv"), order_rows)
         write_csv(output / (label + "-transitions.csv"), transition_rows)
@@ -130,10 +153,10 @@ def prepare(build, tracklist, output):
         for suffix in (".json", "-order.csv", "-transitions.csv", ".cue"):
             files[label + suffix] = checked_file(output, label + suffix)
         statuses = {status: sum(j["status"] == status for j in joins) for status in ("pass", "warn", "fail")}
-        mixes.append({"id": label, "name": report["name"], "seconds": proof["seconds"],
+        mixes.append({"id": label, "name": report["name"], **semantics, "seconds": proof["seconds"],
                       "bytes": proof["bytes"], "sha256": proof["sha256"], "trackCount": len(order),
                       "audio": "/files/" + label + ".mp3", "checks": statuses, "order": order_rows,
-                      "transitions": transition_rows, "sourceWarnings": report.get("sourceWarnings", ""),
+                      "transitions": transition_rows, "sourceWarnings": source_warnings,
                       "verificationScope": proof.get("scope", ""),
                       "downloads": {"CUE": "/files/" + label + ".cue",
                                     "Order CSV": "/files/" + label + "-order.csv",
@@ -182,7 +205,13 @@ def make_server(manifest, files, port):
             origin = self.headers.get("Origin")
             if host not in allowed or (origin and origin != "http://" + host):
                 return False
-            return self.headers.get("Sec-Fetch-Site") not in ("cross-site",)
+            if self.headers.get("Sec-Fetch-Site") == "cross-site":
+                # A link from chat may open this local page. Only that top-level
+                # document navigation is allowed, never cross-site data/media.
+                return (self.path == "/" and not origin
+                        and self.headers.get("Sec-Fetch-Mode") == "navigate"
+                        and self.headers.get("Sec-Fetch-Dest") == "document")
+            return True
 
         def respond(self, status, content_type, length, extra=()):
             self.send_response(status)
@@ -279,11 +308,12 @@ def main():
     parser.add_argument("--tracklist", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--port", type=int, default=4301)
+    parser.add_argument("--labels", nargs="+", help="Explicit report/MP3 basenames in display order (default: 60s 90s 180s full)")
     parser.add_argument("--prepare-only", action="store_true")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("port must be between 1024 and 65535")
-    manifest, files = prepare(args.build, args.tracklist, args.out)
+    manifest, files = prepare(args.build, args.tracklist, args.out, args.labels)
     if args.prepare_only:
         print(json.dumps({"mixes": len(manifest["mixes"]), "tracks": len(manifest["sources"]), "private": True}))
         return

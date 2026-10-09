@@ -2,17 +2,19 @@
 
 This deliberately does not use energy-based ordering or the full-set planner's
 intro/outro trimming. A full timeline includes [0, decoded duration] of every
-source. Excerpts target source seconds per song, including their overlaps.
+source. Excerpts can target source seconds per song or an exact total mix
+duration across all tracks, including their overlaps.
 """
 from __future__ import annotations
 
 import numpy as np
 
+from .audio import SR
 from .params import defaults
 from .plan import beatable, camelot_distance, energy_scores, fitted_grid, tempo_match
 
 
-def select_window(track: dict, seconds: float | None) -> dict:
+def select_window(track: dict, seconds: float | None, snap_end: bool = True) -> dict:
     dur = float(track["duration"])
     if seconds is None or dur <= seconds:
         return {"start": 0.0, "end": dur, "reason": "complete source"}
@@ -48,7 +50,7 @@ def select_window(track: dict, seconds: float | None) -> dict:
             start = float(near[np.argmin(abs(near - start))])
     end = start + seconds
     # Musical bar ends may vary by <= one bar / 3 seconds from the requested excerpt.
-    if len(grid):
+    if len(grid) and snap_end:
         near = grid[(grid >= end - 3) & (grid <= min(dur, end + 3))]
         if len(near):
             end = float(near[np.argmin(abs(near - end))])
@@ -84,26 +86,53 @@ def _beat_join(a, b, wa, wb, p):
             "reason": "locally fitted beats; bass handover, then incoming tempo returns to native"}, None
 
 
-def build_timeline(tracks: list[dict], seconds: float | None = None) -> dict:
+def build_timeline(tracks: list[dict], seconds: float | None = None,
+                   *, total_seconds: float | None = None) -> dict:
     if not tracks or len({t["id"] for t in tracks}) != len(tracks):
         raise ValueError("A timeline requires nonempty, unique track identities")
     positions = [t["position"] for t in tracks]
     if positions != list(range(1, len(tracks) + 1)):
         raise ValueError("Tracks must contain every consecutive position in the given order")
-    if seconds is not None and seconds < 30:
+    if total_seconds is not None and seconds is not None:
+        raise ValueError("Choose total mix duration or source seconds per song, not both")
+    if total_seconds is not None:
+        if not np.isfinite(total_seconds) or total_seconds <= 0:
+            raise ValueError("Total mix duration must be finite and positive")
+        total_frames = round(total_seconds * SR)
+        overlap_frames = 2 * SR
+        source_frames = total_frames + (len(tracks) - 1) * overlap_frames
+        base, extra = divmod(source_frames, len(tracks))
+        if base <= 2 * overlap_frames + SR // 2:
+            raise ValueError("Total mix is too short to retain audible solo passages for every track")
+        windows = []
+        for i, track in enumerate(tracks):
+            count = base + (i < extra)
+            if count > round(track["duration"] * SR):
+                raise ValueError("Source is shorter than its allocated total-duration slot")
+            window = select_window(track, count / SR, snap_end=False)
+            start = min(round(window["start"] * SR), round(track["duration"] * SR) - count)
+            window.update(start=start / SR, end=(start + count) / SR)
+            windows.append(window)
+        seconds = source_frames / len(tracks) / SR
+    elif seconds is not None and seconds < 30:
         raise ValueError("Excerpt duration is source seconds per song, minimum 30")
-    windows = [select_window(t, seconds) for t in tracks]
+    else:
+        windows = [select_window(t, seconds) for t in tracks]
     p = defaults()
     p.update(target_lufs=-17.0, ceiling_db=-1.5, max_stretch_pct=8.0)
     transitions = []
     for i, (a, b) in enumerate(zip(tracks, tracks[1:])):
         wa, wb = windows[i:i + 2]
         spec, reason = (None, "full source edges preserved at native tempo")
-        if seconds is not None:
+        if seconds is not None and total_seconds is None:
             spec, reason = _beat_join(a, b, wa, wb, p)
         if spec is None:
-            length = min(5.0, (wa["end"] - wa["start"]) / 5,
-                         (wb["end"] - wb["start"]) / 5)
+            if total_seconds is not None:
+                length = overlap_frames / SR
+                reason = "two-second native-tempo fade; fixed total duration preserves every source slot"
+            else:
+                length = min(5.0, (wa["end"] - wa["start"]) / 5,
+                             (wb["end"] - wb["start"]) / 5)
             spec = {"style": "fade", "beatmatch": False, "T": length,
                     "T_overlap": length, "a_out_start": wa["end"] - length,
                     "a_out_end": wa["end"], "b_in_start": wb["start"],
@@ -135,6 +164,13 @@ def build_timeline(tracks: list[dict], seconds: float | None = None) -> dict:
             "total_seconds": elapsed, "params": p, "excerptTargetSeconds": seconds,
             "coveragePolicy": "all decoded source audio, overlapping edges" if seconds is None
             else "section-selected source seconds per song, overlaps included"}
+    if total_seconds is not None:
+        if round(elapsed * SR) != total_frames:
+            raise ValueError("Total-duration source allocation does not match its sample budget")
+        plan.update(total_seconds=total_frames / SR, durationMode="total",
+                    totalTargetSeconds=total_frames / SR, targetFrames=total_frames,
+                    sampleRate=SR, crossfadeSeconds=overlap_frames / SR,
+                    coveragePolicy="all tracks in fixed order; selected native-speed sections within an exact total duration")
     assert_coverage(plan, tracks)
     return plan
 
@@ -143,6 +179,7 @@ def assert_coverage(plan, tracks):
     """Prove the emitted native/transition intervals cover each selected source once."""
     if [t["id"] for t in tracks] != [t["id"] for t in plan["order"]]:
         raise ValueError("Timeline order changed")
+    emitted_frames = 0
     for i, (t, row) in enumerate(zip(tracks, plan["order"])):
         a, b = row["sourceStart"], row["sourceEnd"]
         if not 0 <= a < b <= t["duration"] + 1 / 44100:
@@ -155,12 +192,16 @@ def assert_coverage(plan, tracks):
             intervals.append((previous["b_in_start"], previous["b_in_end"]))
         end = plan["transitions"][i]["a_out_start"] if i < len(tracks) - 1 else b
         intervals.append((plan["native_starts"][i], end))
+        emitted_frames += round(end * SR) - round(plan["native_starts"][i] * SR)
         if i < len(tracks) - 1:
             tr = plan["transitions"][i]
             intervals.append((tr["a_out_start"], tr["a_out_end"]))
+            emitted_frames += round(tr["T"] * SR)
         edges = [a] + [v for interval in intervals for v in interval] + [b]
         if any(abs(edges[n] - edges[n + 1]) > 1 / 44100 for n in range(0, len(edges) - 1, 2)):
             raise ValueError("Source coverage gap or duplication")
         if any(hi <= lo for lo, hi in intervals):
             raise ValueError("Invalid source interval")
+    if plan.get("durationMode") == "total" and emitted_frames != plan["targetFrames"]:
+        raise ValueError("Rendered interval samples do not match the total duration")
     return True

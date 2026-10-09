@@ -82,6 +82,11 @@ class PrivatePlayerTest(unittest.TestCase):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
         for headers in [{"Host": "attacker.example"}, {"Origin": "https://attacker.example"}, {"Origin": "null"}, {"Sec-Fetch-Site": "cross-site"}]:
             self.assertEqual(self.request("/manifest.json", headers=headers)[0], 403)
+        navigation = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+        self.assertEqual(self.request("/", headers=navigation)[0], 200)
+        self.assertEqual(self.request("/manifest.json", headers=navigation)[0], 403)
+        self.assertEqual(self.request("/files/full.mp3", headers=navigation)[0], 403)
+        self.assertEqual(self.request("/", headers={**navigation, "Sec-Fetch-Dest": "iframe"})[0], 403)
         for path in ["/files/../tracklist.json", "/files/%2e%2e%2ftracklist.json", "/files/%252e%252e%252ftracklist.json", "/files/", "/files/60s.mp3?path=/etc/passwd", "/tracklist.json", "/regeneration.json"]:
             self.assertEqual(self.request(path)[0], 404)
         self.assertEqual(self.request("/files/full.mp3", "POST")[0], 405)
@@ -120,6 +125,36 @@ class PrivatePlayerTest(unittest.TestCase):
         source.write_bytes(b"different recording")
         with self.assertRaisesRegex(ValueError, "source hash differs"):
             player.prepare(self.build, self.tracklist, self.output)
+
+    def test_total_duration_semantics_and_explicit_mix_selection(self):
+        for target in (180, 240):
+            label = f"total-{target}s"
+            report = json.loads((self.build / "60s.json").read_text())
+            report["plan"].update({"durationMode": "total", "totalTargetSeconds": target,
+                                   "excerptTargetSeconds": 5.2})
+            report["verification"]["seconds"] = target + .025
+            report["sourceWarnings"] = [{"position": 1, "note": "Original frame warning"}]
+            (self.build / (label + ".json")).write_text(json.dumps(report))
+            (self.build / (label + ".mp3")).write_bytes(self.audio)
+            (self.build / (label + ".cue")).write_text('FILE "old.mp3" MP3\n  TRACK 01 AUDIO\n')
+        labels = ["total-180s", "total-240s", "full"]
+        manifest, files = player.prepare(self.build, self.tracklist, self.output, labels)
+        self.assertEqual([mix["id"] for mix in manifest["mixes"]], labels)
+        self.assertNotIn("60s.mp3", files)
+        for mix, target in zip(manifest["mixes"], (180, 240)):
+            self.assertEqual(mix["durationMode"], "total")
+            self.assertEqual(mix["totalTargetSeconds"], target)
+            self.assertIn("total duration", mix["displayTitle"])
+            self.assertNotIn("per song", mix["displayTitle"])
+            self.assertEqual(mix["sourceWarnings"][0]["position"], 1)
+        report_path = self.build / "total-180s.json"
+        report = json.loads(report_path.read_text())
+        report["verification"]["seconds"] = 3000
+        report_path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(ValueError, "differs from declared total-duration"):
+            player.prepare(self.build, self.tracklist, self.output, labels)
+        with self.assertRaisesRegex(ValueError, "simple basenames"):
+            player.prepare(self.build, self.tracklist, self.output, ["../full"])
 
 
 if __name__ == "__main__":

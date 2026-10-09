@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyse a numbered handover and render a full timeline plus per-song excerpts."""
+"""Render a numbered handover in full, as per-song excerpts, or to an exact total duration."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from automix.analyze import analyze_file, cache_path, refine, track_id
-from automix.audio import AudioCache, _ffmeta_escape
+from automix.audio import AudioCache, SR, _ffmeta_escape
 from automix.medley.build import write_cue
 from automix.render import render_full
 from automix.timeline import assert_coverage, build_timeline
@@ -238,6 +238,23 @@ def verify_encoded(path, plan):
                           "-map", "0:a:0", "-f", "null", "-"], capture_output=True, text=True)
     if dec.returncode or dec.stderr.strip():
         raise RuntimeError(f"Encoded MP3 decode failed: {dec.stderr[:1000]}")
+    exact = {}
+    if plan.get("durationMode") == "total":
+        with subprocess.Popen(["/opt/homebrew/bin/ffmpeg", "-v", "error", "-nostdin",
+            "-i", str(path), "-map", "0:a:0", "-ac", "2", "-ar", str(SR),
+            "-f", "f32le", "-"], stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+            decoded_bytes = 0
+            while block := proc.stdout.read(1024 * 1024):
+                decoded_bytes += len(block)
+            errors = proc.stderr.read()
+            if proc.wait() or errors or decoded_bytes % 8:
+                raise RuntimeError("Could not count the final MP3 decoded stereo frames")
+        frames = decoded_bytes // 8
+        if frames != plan["targetFrames"]:
+            raise RuntimeError(f"Exact duration failed: decoded {frames}, expected {plan['targetFrames']} frames")
+        exact = {"decodedFrames": frames, "decodedSeconds": frames / SR,
+                 "totalTargetSeconds": plan["totalTargetSeconds"], "containerSeconds": actual,
+                 "durationVerification": "exact decoded sample count; MP3 container may include encoder padding"}
     checks = []
     for tr in plan["transitions"]:
         begin = max(0, tr["outputStart"] - 3)
@@ -277,11 +294,13 @@ def verify_encoded(path, plan):
                        "status": "warn" if warnings else "pass", "warnings": warnings,
                        "decodedPeak": peak, "continuity": metrics,
                        "renderedBeatAlignment": beat_check})
+    with path.open("rb") as fh:
+        digest = hashlib.file_digest(fh, "sha256").hexdigest()
     return {"seconds": actual, "bytes": path.stat().st_size,
             "verifierRevision": "timeline-encoded-v3", "checkedAt": time.time(),
             "chapterTitlesAndTimes": "verified", "stereoPeakScan": "every overlap at44100Hz",
-            "sha256": hashlib.file_digest(path.open("rb"), "sha256").hexdigest(),
-            "chapters": len(doc["chapters"]), "decode": "clean", "joins": checks,
+            "sha256": digest,
+            "chapters": len(doc["chapters"]), "decode": "clean", "joins": checks, **exact,
             "scope": "Full MP3 decode, duration, chapter/order/source coverage, and encoded overlap continuity. "
                      "Beatmatched overlaps also have independent Beat This detection on encoded audio. "
                      "No listening acceptance or whole-mix beat-alignment pass is claimed."}
@@ -305,11 +324,45 @@ def write_timeline_cue(path, mp3, name, chapters):
               [dict(chapter, title=clean(chapter["title"])) for chapter in chapters])
 
 
-def render(tracks, out, seconds, playlist_name="Life timeline 1976–2026", version=1):
+def audit_short_sources(tracks, plan):
+    """Check actual selected audio and each solo body before rendering rapid excerpts."""
+    import numpy as np
+    checks = []
+    for i, (track, row) in enumerate(zip(tracks, plan["order"])):
+        raw = subprocess.check_output(["/opt/homebrew/bin/ffmpeg", "-v", "error", "-nostdin",
+            "-ss", str(row["sourceStart"]), "-i", track["path"],
+            "-t", str(row["sourceEnd"] - row["sourceStart"]),
+            "-ac", "2", "-ar", str(SR), "-f", "f32le", "-"], stderr=subprocess.PIPE)
+        y = np.frombuffer(raw, dtype=np.float32).reshape(-1, 2)
+        native_end = (plan["transitions"][i]["a_out_start"]
+                      if i < len(plan["transitions"]) else row["sourceEnd"])
+        a = round((plan["native_starts"][i] - row["sourceStart"]) * SR)
+        b = round((native_end - row["sourceStart"]) * SR)
+        body = y[a:b]
+        if len(body) < SR // 2:
+            raise RuntimeError(f"Short mix track {i + 1} has no substantial solo body")
+        rms = float(20 * np.log10(max(1e-12, np.sqrt(np.mean(y.astype(float) ** 2)))))
+        body_rms = float(20 * np.log10(max(1e-12, np.sqrt(np.mean(body.astype(float) ** 2)))))
+        if min(rms, body_rms) < -45:
+            raise RuntimeError(f"Short mix track {i + 1} selected near-silent audio; choose another section")
+        checks.append({"position": i + 1, "sourceSha256": track["sha256"],
+                       "selectedRmsDbfs": round(rms, 3), "soloRmsDbfs": round(body_rms, 3),
+                       "soloSeconds": len(body) / SR, "status": "pass"})
+    return {"thresholdDbfs": -45, "minimumSoloSeconds": .5, "tracks": checks}
+
+
+def mix_label(seconds, total_seconds=None):
+    return (f"total-{total_seconds:g}s" if total_seconds is not None
+            else "full" if seconds is None else f"{seconds:g}s")
+
+
+def render(tracks, out, seconds, playlist_name="Life timeline 1976–2026", version=1,
+           *, total_seconds=None):
     validate_sources(tracks)
-    label = "full" if seconds is None else f"{seconds:g}s"
-    plan = build_timeline(tracks, seconds)
-    name = playlist_name + " · " + ("Full tracks" if seconds is None else f"{seconds:g}s per song")
+    label = mix_label(seconds, total_seconds)
+    plan = build_timeline(tracks, seconds, total_seconds=total_seconds)
+    name = playlist_name + " · " + (f"{total_seconds / 60:g}-minute mix" if total_seconds is not None
+            else "Full tracks" if seconds is None else f"{seconds:g}s per song")
     path = out / f"{label}.mp3"
     work = out / f"{label}.partial.mp3"
     if path.exists():
@@ -317,6 +370,7 @@ def render(tracks, out, seconds, playlist_name="Life timeline 1976–2026", vers
     if work.exists():
         work.rename(out / f"{label}.failed-{time.time_ns()}.mp3")
     save(out / f"{label}-plan.json", plan)
+    source_audio_check = audit_short_sources(tracks, plan) if total_seconds is not None else None
     chapters = [{"start": row["start"],
                  "end": plan["order"][i + 1]["start"] if i + 1 < len(tracks) else plan["total_seconds"],
                  "title": row["artist"] + " - " + row["title"]}
@@ -348,16 +402,20 @@ def render(tracks, out, seconds, playlist_name="Life timeline 1976–2026", vers
                     "note": "Original source decodes with recoverable MP3 frame warnings; file preserved unchanged"})
     report = {"created": time.strftime("%Y%m%d-%H%M%S"), "name": name, "plan": plan,
               "chapters": chapters, "verification": media,
-              "sourceWarnings": source_warnings, "sourceAuditAvailable": bool(audits)}
+              "sourceWarnings": source_warnings, "sourceAuditAvailable": bool(audits),
+              "selectedAudioVerification": source_audio_check}
     save(path.with_suffix(".json"), report)
     warn = sum(row["status"] == "warn" for row in media["joins"])
     return {"id": "timeline-" + label, "name": name, "version": version, "status": "done",
-            "kind": "full" if seconds is None else "medley", "excerptTargetSeconds": seconds,
+            "kind": "full" if seconds is None and total_seconds is None else "medley",
+            "excerptTargetSeconds": plan["excerptTargetSeconds"],
+            "durationMode": "total" if total_seconds is not None else "full" if seconds is None else "per-song",
+            "totalTargetSeconds": total_seconds,
             "tracks": len(tracks), "plan": str(out / f"{label}-plan.json"),
             "mp3": str(path), "cue": str(path.with_suffix(".cue")),
             "report": str(path.with_suffix(".json")), "media": {k: media[k] for k in
                 ("seconds", "bytes", "sha256", "chapters", "decode")},
-            "quality": quality(media, seconds),
+            "quality": quality(media, plan["excerptTargetSeconds"]),
             "verificationNote": f"All {len(tracks)} chapters in fixed order; encoded MP3 decodes cleanly. "
                                 f"{warn} overlap continuity warnings. Not listening-approved."}
 
@@ -370,7 +428,9 @@ def main():
     ap.add_argument("--prepare-only", action="store_true")
     ap.add_argument("--prepared", action="store_true", help="Use the completed analysis.json snapshot")
     ap.add_argument("--verify-only", action="store_true", help="Recheck completed encoded mixes without rendering")
-    ap.add_argument("--durations", default="full,60,90,180", help="Comma-separated source seconds per song")
+    duration_group = ap.add_mutually_exclusive_group()
+    duration_group.add_argument("--durations", help="Comma-separated source seconds per song; default full,60,90,180")
+    duration_group.add_argument("--total-durations", help="Comma-separated exact total mix seconds, across all tracks")
     ap.add_argument("--name", help="Mix collection title; defaults to the handover name")
     ap.add_argument("--version", type=int, default=1, help="Version recorded in the mix manifest")
     ap.add_argument("--structure-method", choices=("novelty", "allin1"), default="novelty",
@@ -420,13 +480,16 @@ def main():
             save(manifest_path, manifest)
             log(f"Verified {row['id']} with {result['verifierRevision']}")
         return
-    for duration in args.durations.split(","):
-        seconds = None if duration == "full" else float(duration)
-        key = "timeline-" + ("full" if seconds is None else f"{seconds:g}s")
+    durations = ([(None, float(value)) for value in args.total_durations.split(",")]
+                 if args.total_durations else
+                 [(None if value == "full" else float(value), None)
+                  for value in (args.durations or "full,60,90,180").split(",")])
+    for seconds, total_seconds in durations:
+        key = "timeline-" + mix_label(seconds, total_seconds)
         finished = next((row for row in manifest["sets"] if row["id"] == key and row["status"] == "done"), None)
         if finished:
             old_plan = json.loads(Path(finished["plan"]).read_text())
-            current_plan = build_timeline(tracks, seconds)
+            current_plan = build_timeline(tracks, seconds, total_seconds=total_seconds)
             if old_plan != current_plan:
                 raise RuntimeError(f"Completed {key} inputs changed; use a new output directory")
             with Path(finished["mp3"]).open("rb") as fh:
@@ -438,7 +501,7 @@ def main():
             continue
         manifest.update(status="rendering", current=key, updated=time.time())
         save(manifest_path, manifest)
-        result = render(tracks, out, seconds, playlist_name, args.version)
+        result = render(tracks, out, seconds, playlist_name, args.version, total_seconds=total_seconds)
         manifest["sets"].append(result)
         manifest.update(updated=time.time())
         save(manifest_path, manifest)

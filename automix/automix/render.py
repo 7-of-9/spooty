@@ -302,7 +302,16 @@ def render_full(cache, order_tracks: list[dict], plan: dict, p: dict, out_path: 
             y = cache.get(t["path"])
             end = trs[i]["a_out_start"] if i < len(trs) else t["duration"]
             body = crop(y, _s(starts[i]), _s(max(end, starts[i] + 2 * XF / SR)))
-            emit(body * track_gain(t, p), overlaps=i > 0)
+            body *= track_gain(t, p)
+            if plan.get("durationMode") == "total":
+                # Excerpts may begin/end mid-waveform. Ten-millisecond edge ramps
+                # avoid clicks without adding, dropping or retiming any samples.
+                edge = min(_s(.01), len(body))
+                if i == 0:
+                    body[:edge] *= np.linspace(0, 1, edge, dtype=np.float32)[:, None]
+                if i == len(order_tracks) - 1:
+                    body[-edge:] *= np.linspace(1, 0, edge, dtype=np.float32)[:, None]
+            emit(body, overlaps=i > 0)
             if i < len(trs):
                 yb = cache.get(order_tracks[i + 1]["path"])
                 emit(render_region(y, yb, t, order_tracks[i + 1], trs[i], p), overlaps=True)

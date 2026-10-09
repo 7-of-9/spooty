@@ -87,3 +87,31 @@ test('seeking keeps zero, waits for metadata and normal play resumes', async () 
   audio.listeners.loadedmetadata();
   assert.equal(audio.currentTime, 0);
 });
+
+test('total-length previews show their declared duration and all 55 source tracks', async () => {
+  const data = fixture();
+  data.sources = Array.from({ length: 55 }, (_, i) => ({ position: i + 1,
+    title: `Song ${i + 1}`, artist: 'Artist', era: '', audio: `/files/source-${i + 1}.mp3` }));
+  data.mixes = [180, 240, null].map(seconds => ({ ...data.mixes[0],
+    id: seconds === null ? 'full' : `total-${seconds}s`,
+    name: seconds === null ? 'All tracks in full' : `${seconds} seconds total`,
+    displayTitle: seconds === null ? 'Every track in full' : `${seconds} seconds total`,
+    durationMode: seconds === null ? 'full' : 'total', totalTargetSeconds: seconds,
+    trackCount: 55, seconds: seconds ?? 17000,
+    audio: seconds === null ? '/files/full.mp3' : `/files/total-${seconds}s.mp3`,
+    sourceWarnings: [{ position: 15, note: 'Original source has recoverable frame warnings' }],
+  }));
+  const { elements, audio } = await player(data);
+  assert.equal(elements.get('#mixes').children.length, 3);
+  assert.equal(elements.get('#source-rows').children.length, 55);
+  const firstCard = descendants(elements.get('#mixes').children[0]);
+  assert.equal(firstCard.find(n => n.tag === 'h2').textContent, '180 seconds total');
+  const secondCard = descendants(elements.get('#mixes').children[1]);
+  assert.equal(secondCard.find(n => n.tag === 'h2').textContent, '240 seconds total');
+  secondCard.find(n => n.tag === 'button' && n.textContent === 'Play mix').listeners.click();
+  assert.equal(audio.src, 'http://127.0.0.1:4301/files/total-240s.mp3');
+  const visible = descendants(elements.get('#mixes')).map(n => String(n.textContent)).join(' ');
+  assert.match(visible, /Original source has recoverable frame warnings/);
+  assert.doesNotMatch(visible, /\[object Object\]|seconds per song/);
+  assert.doesNotMatch(elements.get('#intro').textContent, /seconds of each song/);
+});

@@ -65,6 +65,15 @@ function details(summary, content) {
   d.append(el('summary', summary), content);
   return d;
 }
+function sourceWarningText(warnings) {
+  if (!warnings) return '';
+  if (!Array.isArray(warnings)) return String(warnings);
+  return warnings.map(warning => {
+    if (typeof warning === 'string') return warning;
+    if (!warning || typeof warning !== 'object') return '';
+    return (warning.position ? `Track ${warning.position}: ` : '') + (warning.note || warning.warning || 'Source audio needs auditioning.');
+  }).filter(Boolean).join(' · ');
+}
 
 async function load() {
   const response = await fetch('/manifest.json', {cache: 'no-store'});
@@ -72,10 +81,10 @@ async function load() {
   const data = await response.json();
   document.title = data.name + ' · Private';
   document.querySelector('#title').textContent = data.name;
-  document.querySelector('#intro').textContent = `${data.sources.length} tracks · ${data.mixes.length} versions · ~60, 90 or 180 seconds of each song, plus all tracks in full. Crossfades shorten the finished runtime. Nothing here is uploaded.`;
+  document.querySelector('#intro').textContent = `${data.sources.length} tracks · ${data.mixes.length} versions · Chronological order preserved. Compact mixes use selected highlights; the full mix keeps complete tracks. Nothing here is uploaded.`;
   for (const mix of data.mixes) {
     const card = el('article', undefined, 'mix-card');
-    card.append(el('h2', mix.id === 'full' ? 'Every track in full' : '~' + mix.id.replace('s', '') + ' seconds per song'));
+    card.append(el('h2', mix.displayTitle || mix.name));
     card.append(el('p', `${time(mix.seconds)} · ${mix.trackCount} tracks · ${(mix.bytes / 1e6).toFixed(1)} MB`, 'stats'));
     const actions = el('div', undefined, 'actions');
     actions.append(button('Play mix', () => play(mix.audio, mix.name), 'primary'), download('Download MP3', mix.audio));
@@ -83,7 +92,8 @@ async function load() {
     card.append(actions);
     const checks = mix.checks;
     card.append(el('p', `Transition checks: ${checks.pass} passed · ${checks.warn} warnings · ${checks.fail} failed.`, checks.warn || checks.fail ? 'warning' : 'checks'));
-    if (mix.sourceWarnings) card.append(el('p', mix.sourceWarnings, 'warning'));
+    const sourceNotes = sourceWarningText(mix.sourceWarnings);
+    if (sourceNotes) card.append(el('p', sourceNotes, 'warning'));
     const chapters = mix.order.map(row => [row.position, button(time(row.startSeconds), () => play(mix.audio, mix.name, row.startSeconds), 'time'), row.artist + ' — ' + row.title, row.era, `${time(row.sourceStart)}–${time(row.sourceEnd)}`, row.selectionReason]);
     card.append(details('Chapters & selected sections', table(['#', 'Jump to', 'Track', 'Era', 'Source section', 'Selection'], chapters)));
     const transitions = mix.transitions.map(row => [row.position, button(time(row.startSeconds), () => play(mix.audio, mix.name, Math.max(0, row.startSeconds - 5)), 'time'), row.from + ' → ' + row.to, `${row.style} · ${Number(row.overlapSeconds).toFixed(1)}s`, row.checkStatus, [row.reason, row.warnings].filter(Boolean).join(' · ')]);

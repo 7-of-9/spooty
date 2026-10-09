@@ -119,19 +119,22 @@ readback. It is useful for a second URL exposing already verified identical audi
 
 ## Fixed-order local handovers
 
-The Life timeline collection is now **private**. Its earlier 55-track public
-version has been withdrawn; the replacement 16-track handover must not be
-uploaded. Use the local player below, including when restarting after a reboot:
+The Life timeline collection is now **private**. Its earlier public version has
+been withdrawn. The current selection restores all 55 original tracks with two
+compact blends of **180 seconds and 240 seconds total**, plus a full-length mix.
+Keep the prior 16-track renders locally; do not upload either collection.
+Use the local player below, including when restarting after a reboot:
 
 ```sh
 python3 scripts/dj-share/serve-private.py \
-  --build data/automix/builds/life-timeline-v2-20261009 \
-  --tracklist data/automix/handover/life-timeline-v2/tracklist.json \
-  --out data/dj-private/life-timeline-v2 \
+  --build data/automix/builds/life-timeline-55-short-20261009 \
+  --tracklist data/automix/handover/life-timeline-v1/tracklist.json \
+  --out data/dj-private/life-timeline-55-short \
+  --labels total-180s total-240s full \
   --port 4301
 ```
 
-Open `http://127.0.0.1:4301/` on the same Mac for all four versions, chapter
+Open `http://127.0.0.1:4301/` on the same Mac for all three versions, chapter
 seeking, source playback and downloads. The server binds only to loopback and
 validates rendered and source hashes before serving. Do not stop a different
 player or the acquisition app if that port is already occupied. See

@@ -1,5 +1,48 @@
 # Handover: Spooty library MP3 backfill + YouTube throughput
 
+## Latest — 9 October 2026, 19:20 Bangkok: corrected 55-track total-length previews
+
+The owner clarified the brief: use all 55 original songs, make 180-second and
+240-second **total** mixes with roughly 5–10-second source highlights, plus one
+end-to-end mix containing every full song. This replaces the active 16-track
+selection below. Privacy remains in force; historical files are preserved.
+
+- Private page: http://127.0.0.1:4301/, owned PID 22014, loopback only. It now
+  shows exactly three versions: 3:00, 4:00 and full 4h48m51s. Only the verified
+  previous owned server PID 48266 was replaced; player on 4300 is untouched.
+- All 55 source hashes remain unchanged (501,710,865 bytes). Reused 881 measured
+  sections. Short source windows average 5.236 and 6.327 seconds, respectively,
+  with 54 two-second fades at native speed. Every song retains a solo passage.
+  Neither mix is made by speeding up or truncating a longer render.
+- Final short MP3s decode to exactly 7,938,000 and 10,584,000 stereo frames at
+  44.1kHz: 180.000 and 240.000 seconds. All 55 chapters and source intervals pass.
+  An independent waveform audit confirms all 110 solo passages against their
+  original source audio with zero sample lag; none is omitted or silent.
+- The full mix reuses the exact previously verified MP3 through a hardlink.
+  Its hash and complete-source plan match; every original source interval is
+  retained. Duration is 17,330.871587 seconds, with 54 five-second overlaps.
+- Measured transition warnings remain visible: three in each short mix and
+  33 in the full mix. Three original source files retain their known recoverable
+  frame warnings. No listening acceptance or whole-mix beat-grid pass is claimed.
+- HTTP readback verifies all three complete mix downloads (710,055,765 bytes),
+  nine mix ranges, 55 source ranges, 165 chapter times and twelve CUE/CSV/JSON
+  companions. The page provides play/download, source highlights and join notes.
+  Links from chat can navigate to the local page; cross-origin media/metadata,
+  framing, path traversal and Host/Origin rebinding remain rejected.
+- Artifacts and independent audio evidence:
+  `data/automix/builds/life-timeline-55-short-20261009/`.
+  Server and HTTP evidence: `data/dj-private/life-timeline-55-short/`.
+  Restart command is in `scripts/dj-share/README.md`, with explicit labels
+  `total-180s total-240s full`. Do not substitute the older per-song labels.
+- Validation: 16 focused Automix tests (including real MP3 encode/decode),
+  seven private-player Python tests and three JS interaction tests pass.
+  Real-data resume confirms unchanged plans/hashes. Render processes exited.
+  Generic code/docs are tracked; private handovers, audio and evidence are ignored.
+- No public upload/deployment, browser connection or acquisition action occurred.
+  The Life timeline public withdrawal and public Playlist 50 remain unchanged.
+  Last catalog audit remains 19,067/19,732 saved, 173.358960927 GB unique-inode
+  MP3 storage in the active download root. This rendering task is complete.
+
 ## Latest — 9 October 2026, 18:56 Bangkok: private 16-track replacement complete
 
 The new private v2 handover supersedes the 55-track v1 collection below. The

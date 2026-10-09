@@ -89,6 +89,16 @@ Completed builds resume only when their plans, source hashes and output hashes
 still match. Failed partial audio is retained; use a new output directory when
 changing the source playlist or build policy.
 
+To make compact overviews with an exact **whole-mix duration**, use
+`--total-durations 180,240` instead of `--durations`. This allocates an integer
+audio-sample budget across every source, selecting measured musical sections at
+native speed and using two-second overlapping fades. With 55 tracks, the source
+sections are approximately 5.24 and 6.33 seconds respectively. Every track keeps
+a solo passage; near-silent selected audio is rejected. The final MP3 must decode
+to exactly the requested frame count, although its container duration can include
+encoder padding. This mode neither truncates a longer mix nor accelerates songs.
+It writes separate `total-180s` / `total-240s` artifacts and preserves older builds.
+
 The medley engine composes transitions between song highlights, using cached
 structure and separate drums, bass, vocals and other stems where available:
 

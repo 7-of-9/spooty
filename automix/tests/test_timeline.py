@@ -63,6 +63,37 @@ class TimelineTests(unittest.TestCase):
         row = select_window(track(1, 42), 60)
         self.assertEqual((row["start"], row["end"]), (0, 42))
 
+    def test_total_duration_keeps_every_source_at_native_speed(self):
+        tracks = [track(i, bpm=95 + i) for i in range(1, 56)]
+        for target in (180, 240):
+            plan = build_timeline(tracks, total_seconds=target)
+            self.assertEqual(plan["total_seconds"], target)
+            self.assertEqual(plan["targetFrames"], target * 44100)
+            self.assertEqual(len(plan["order"]), 55)
+            self.assertEqual(len(plan["transitions"]), 54)
+            self.assertTrue(assert_coverage(plan, tracks))
+            for row in plan["order"]:
+                self.assertGreater(row["sourceEnd"] - row["sourceStart"], 5)
+                self.assertLess(row["sourceEnd"] - row["sourceStart"], 7)
+            for tr in plan["transitions"]:
+                self.assertFalse(tr["beatmatch"])
+                self.assertEqual(tr["T"], 2)
+                self.assertAlmostEqual(tr["a_out_end"] - tr["a_out_start"], 2)
+                self.assertAlmostEqual(tr["b_in_end"] - tr["b_in_start"], 2)
+            broken = copy.deepcopy(plan)
+            broken["targetFrames"] += 1
+            with self.assertRaisesRegex(ValueError, "samples"):
+                assert_coverage(broken, tracks)
+
+    def test_total_duration_rejects_omitted_solo_passages_and_mixed_semantics(self):
+        tracks = [track(i) for i in range(1, 56)]
+        with self.assertRaisesRegex(ValueError, "audible solo"):
+            build_timeline(tracks, total_seconds=120)
+        with self.assertRaisesRegex(ValueError, "not both"):
+            build_timeline(tracks, 60, total_seconds=240)
+        with self.assertRaisesRegex(ValueError, "finite"):
+            build_timeline(tracks, total_seconds=float("nan"))
+
 
 if __name__ == "__main__":
     unittest.main()
