@@ -69,20 +69,25 @@ def select_files(package, args):
 
     if args.tracks or args.track:
         wanted = set(args.track)
-        known = {track["spotifyId"] for track in manifest["tracks"]}
+        def track_id(track):
+            return track.get("spotifyId") or track.get("sourceId")
+        known = {track_id(track) for track in manifest["tracks"]}
+        require(None not in known, "A track has neither a catalog ID nor an exact source ID")
         require(wanted <= known, "Unknown track IDs: " + ", ".join(sorted(wanted - known)))
         for track in manifest["tracks"]:
-            if not args.tracks and track["spotifyId"] not in wanted:
+            identity = track_id(track)
+            if not args.tracks and identity not in wanted:
                 continue
             audio = track["audio"]
-            add("track", track["spotifyId"], audio["path"], audio["path"],
+            add("track", identity, audio["path"], audio["path"],
                 audio["bytes"], audio["sha256"], audio["filename"])
     if args.archive:
         archive = manifest.get("archive")
         require(isinstance(archive, dict), "Archive is not ready in the local manifest")
         path = archive["path"]
-        key = path if path.startswith("exports/") else "exports/" + path
-        add("archive", "playlist-50", path, key, archive["bytes"], archive["sha256"])
+        key = archive.get("publicPath") or (path if path.startswith("exports/") else "exports/" + path)
+        identity = manifest["playlist"].get("id") or "playlist-50"
+        add("archive", identity, path, key, archive["bytes"], archive["sha256"])
     if args.mix:
         mixes = {mix["id"]: mix for mix in read_json(package / "mixes.json")["mixes"]}
         for identity in dict.fromkeys(args.mix):

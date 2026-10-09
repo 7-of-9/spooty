@@ -116,3 +116,42 @@ retried within the configured bound, with observed/expected byte counts retained
 a complete download must still match its expected hash. `--ranges-only` performs
 HEAD and three range checks and explicitly does not claim a full remote hash
 readback. It is useful for a second URL exposing already verified identical audio.
+
+## Fixed-order local handovers
+
+The Life timeline handover can contain original MP3s without Spotify identifiers.
+Its exporter requires every selected file and its current fingerprinted analysis,
+retains the supplied position order and assigns each source `local:<SHA-256>`.
+Existing Spotify IDs and cached ISRCs are included when known. The public export
+contains music metadata only: private source paths, era notes and handover
+provenance are not copied. Source files are hardlinked without retagging.
+
+```sh
+python3 scripts/dj-share/export-timeline.py \
+  --tracklist data/automix/handover/life-timeline-v1/tracklist.json \
+  --folder data/automix/handover/life-timeline-v1/tracks \
+  --out data/dj-share-life-timeline
+python3 scripts/dj-share/export-timeline.py \
+  --build data/automix/builds/life-timeline-v1-20261009/regeneration.json \
+  --out data/dj-share-life-timeline
+```
+
+The first command probes all selected MP3 streams, checks source stability,
+exports CSV/M3U8/checksums, and reads back every ZIP member for CRC and SHA-256.
+The second publishes only completed renders whose hashes, sizes, chapter counts
+and complete fixed order agree with the build proof. Mix JSON and order CSV also
+include the chosen original-audio intervals when the renderer provides them.
+Mix details also contain all source section boundaries and their analysis method.
+Generic novelty sections describe changes in sound, without claiming verse or
+chorus labels. Final encoded-audio evidence includes chapter titles/times, stereo
+overlap peaks, continuity warnings and independent beat detection for beatmatched
+overlaps. These checks do not certify listening quality or whole-mix beat alignment.
+
+Keep this package separate from `data/dj-share-50/`. Publish its audio using its
+`audio/life-timeline/` keys, mix files using their `mixes/timeline-*` keys and source
+documents under `exports/life-timeline/`. `hosted-manifest.json` already contains
+the correct public paths; upload it as `catalog/life-timeline-manifest.json`.
+Publish its `mixes.json` as `catalog/life-timeline-mixes.json` after all finished
+audio and companion files pass upload verification. No private handover or
+analysis snapshot is a public upload. The public verifier accepts `--tracks` for
+this package and `--track local:<SHA-256>` for sources without Spotify IDs.
