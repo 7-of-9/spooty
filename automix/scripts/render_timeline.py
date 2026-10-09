@@ -280,6 +280,13 @@ def quality(media, seconds):
             "listeningApproved": False, "wholeMixBeatAlignment": "not measured"}
 
 
+def write_timeline_cue(path, mp3, name, chapters):
+    """CUE quoted strings cannot contain unescaped literal double quotes."""
+    clean = lambda value: value.replace('"', "'").replace("\n", " ").replace("\r", " ")
+    write_cue(str(path), str(mp3), clean(name),
+              [dict(chapter, title=clean(chapter["title"])) for chapter in chapters])
+
+
 def render(tracks, out, seconds):
     validate_sources(tracks)
     label = "full" if seconds is None else f"{seconds:g}s"
@@ -311,7 +318,7 @@ def render(tracks, out, seconds):
     media = verify_encoded(work, plan)
     validate_sources(tracks)
     work.replace(path)
-    write_cue(str(path.with_suffix(".cue")), str(path), name, chapters)
+    write_timeline_cue(path.with_suffix(".cue"), path, name, chapters)
     source_warnings = []
     audits = sorted(Path(tracks[0]["path"]).parent.parent.glob("source-audit*.json"),
                     key=lambda candidate: candidate.stat().st_mtime)

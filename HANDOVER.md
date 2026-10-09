@@ -1,5 +1,58 @@
 # Handover: Spooty library MP3 backfill + YouTube throughput
 
+## Latest — 9 October 2026: Life timeline sources, four mixes and public handoff
+
+Public collection: https://fifty-dj-room.dm-ae80.chatgpt.site/?playlist=life-timeline#mixes
+The existing Playlist 50 collection remains available and its catalogs are unchanged.
+
+- The new handover has all 55 requested titles in fixed chronological order.
+  Acquired only the missing Liberian Girl and Horizons through isolated shared
+  acquisition runs; no substitution. All original 53 file hashes remain unchanged.
+  Sources total 501,710,865 bytes. Three original MP3s (15, 18, 19) have retained
+  recoverable frame warnings. Wrong catalog links were corrected or omitted;
+  original edition labels and corrections remain in the private source evidence.
+- Read-only source audit and provenance are under
+  `data/automix/handover/life-timeline-v1/`. The personal handover, source audio,
+  renders, caches and generated packages remain Git-ignored. No MP3 is tracked.
+- Scanned all 55 sources for beats/key/loudness and 881 musical sections: six
+  exact cached MLX analyses and 49 measured chroma/MFCC/loudness novelty analyses.
+  The latter use generic section labels, not invented chorus/verse classifications.
+  The initial slow MLX attempt was stopped and its diagnostic evidence retained.
+- Final rendered durations (60/90/180 mean approximate source seconds per song,
+  including overlaps): 60s = 50m27s; 90s = 1h17m52s; 180s = 2h39m57s;
+  full tracks = 4h48m51s. All four contain every track in the supplied order.
+  The full mix includes all decoded source audio, with 54 five-second edge fades;
+  short sources remain whole in the longer excerpts. No energy-based reordering.
+- Final `timeline-encoded-v3` checks: every source hash matches the final audit,
+  every MP3 decodes cleanly, all 55 chapter titles/times match, source intervals
+  have no gaps, and original-rate stereo overlap peaks are checked. All 14
+  beatmatched excerpt overlaps pass independent encoded-audio beat detection.
+  Continuity warnings remain: full 33; 60s 2; 90s 2; 180s 3. These are retained
+  in public CSV/JSON. No listening approval or whole-mix beat-grid pass is claimed.
+- Render proof: `data/automix/builds/life-timeline-v1-20261009/`, especially
+  `regeneration.json` and `post-run-verification.json`. Owned render, analysis
+  and acquisition processes exited. The previous local audition server was left
+  untouched. Web queues were empty and unpaused before and after targeted
+  acquisition; its temporary ownership pause was restored, with no job interrupted.
+- Public package: `data/dj-share-life-timeline/`; ZIP 501,839,106 bytes, 60 members,
+  every member CRC/SHA read back. Sources retain exact-file SHA identities and
+  Spotify links where known. All four mixes have CUEs, order/transition CSVs,
+  section selections, source intervals and quality details. Catalog publication
+  follows completed media uploads; see immutable final-v3 upload task lists.
+- Public readback evidence: `data/dj-share-upload-state/public-timeline-*`.
+  Source downloads, ZIP and all four mixes receive full anonymous SHA-256 readback
+  plus beginning/middle/end seek tests. Final catalogs/companions are checked
+  byte-for-byte; prior mismatch during metadata revision is preserved separately.
+- Code: root generation/export/verification tools on GitHub `7-of-9/spooty` main;
+  separate Site source on branch `dj-share-site` at `5492f56`, Site saved version 6.
+  Continue using registered Site `appgprj_6ac45ae0b0ac8191978e4854d7049c85`.
+  Upload secrets stay only in runtime configuration/session memory, outside Git.
+  Validation: 10 focused timeline/section tests, 12 Site tests, real full-file and
+  source preservation checks. No new Chrome connection or browser listening QA.
+- Existing Spotify catalog: 19,067/19,732 saved; 173.358960927 GB unique-inode
+  MP3 storage under the active download root. The two targeted additions are
+  outside that older catalog denominator. No unrelated parked search was reopened.
+
 ## Latest — 6 October 2026: all five playlist 50 versions regenerated and public DJ handoff published
 
 Public page: https://fifty-dj-room.dm-ae80.chatgpt.site
