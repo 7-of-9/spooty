@@ -61,8 +61,12 @@ uv run python scripts/render_timeline.py ../data/automix/handover/life-timeline-
 ```
 
 The handover contains `tracklist.json` with consecutive `pos`, `artist`, `title`
-and `handover_file` fields, and a `tracks/` directory. This command makes a full
-mix and excerpts targeting 60, 90 and 180 **source seconds per song**, including
+and `handover_file` (or `file`) fields, and a `tracks/` directory. Filenames must
+stay inside that directory and conflicting aliases are rejected. The handover
+`name` supplies the collection title; `--name` and `--version` can override the
+display title and manifest version without editing the private handover.
+This command makes a full mix and excerpts targeting 60, 90 and 180 **source
+seconds per song**, including
 overlapping transitions. The full mix covers every decoded source interval from
 start to end; its short edge fades do not trim intros or outros. Excerpts start
 at measured musical boundaries, use fitted beat blends where appropriate, and

@@ -1,5 +1,60 @@
 # Handover: Spooty library MP3 backfill + YouTube throughput
 
+## Latest — 9 October 2026, 18:56 Bangkok: private 16-track replacement complete
+
+The new private v2 handover supersedes the 55-track v1 collection below. The
+owner requested the same four versions with the supplied chronology preserved.
+No v2 audio, handover, era notes or analysis was uploaded publicly.
+
+- All 16 source MP3s are present as exact hardlinks to existing files; no new
+  acquisition. Sources total 171,303,135 bytes, decode cleanly and retain their
+  hashes. Exact cached beat/key/loudness analysis and 295 sections were reused.
+- Completed mixes: 60s/song = 14m44s; 90s/song = 22m42s;
+  180s/song = 46m42s; full tracks = 1h35m38s. Each has all 16 tracks in order,
+  16 encoded chapters and 15 transitions. The full mix includes every decoded
+  source interval, with fifteen intentional five-second overlaps and no trimming.
+- Final file verification passes: source identities, complete decode, stereo
+  44.1kHz, chapter names/times, CUEs and encoded output hashes. Continuity warnings
+  are retained: 60s 0, 90s 0, 180s 1, full 9. The 180s warning is an energy dip
+  at join 10; full warnings concern original track-edge level changes. No
+  listening approval or whole-mix beat-grid pass is claimed.
+- Private listening page: http://127.0.0.1:4301/ (owned PID 48266 at checkpoint).
+  It serves all four mixes, the 16 sources, chapter seeking, CUE/order/transition
+  downloads and measured warnings. Only loopback is bound; no arbitrary paths,
+  cross-origin access or public uploads. Existing player on 4300 is untouched.
+  The process is detached; after it exits, restart with the command in
+  `scripts/dj-share/README.md`. Do not stop another process using that port.
+- Private HTTP acceptance: all four entire MP3 downloads match their hashes
+  (431,427,300 bytes), twelve seek ranges and sixteen source ranges match local
+  bytes, all 64 chapter times match reports, and sixteen companion files serve.
+  Evidence: `data/dj-private/life-timeline-v2/http-verification.json` and
+  `server.json`. Render proof: `data/automix/builds/life-timeline-v2-20261009/`,
+  including `post-run-verification.json` and `cached-analysis-reuse.json`.
+- The public Site now blocks all old Life timeline media, ZIPs, companions,
+  catalog aliases and collection page URLs before storage/cache/range handling.
+  Live withdrawal audit passed 319/319 checks across all 83 known objects,
+  encoded variants, GET/HEAD/Range and cache conditions (311 HTTP 410, eight
+  HTTP 404; all no-store). Public navigation no longer advertises the collection.
+  Previously downloaded or browser-cached copies cannot be recalled. Stored
+  historical objects were not deleted; fresh public access is blocked.
+- The independently authorized Playlist 50 remains public: both catalogs are
+  byte-identical to before this deployment, with 100 tracks and five mixes.
+  Its source MP3, full mix and ZIP sample ranges still match local bytes.
+  Evidence: `data/privacy-life-timeline-v2/public-withdrawal.json` and
+  `data/dj-share-upload-state/life-timeline-withdrawal-v2-20261009.json`.
+- Site version 7 deployed successfully at 18:51 Bangkok from `2b4f419`, mirrored
+  to GitHub `7-of-9/spooty` branch `dj-share-site`. Main tracks generic renderer,
+  private player, tests and operational documentation. Media, private handovers,
+  generated metadata, reports and source-selection notes remain Git-ignored.
+- Validation: 13 focused timeline tests, 14 Site tests, six private HTTP boundary
+  tests and two JS playback/seek interaction tests pass. Browser listening QA was
+  unavailable: approved proxy disconnected; preflight's only failure was plugin
+  enumeration timeout. No reconnect, alternate browser or acquisition queue
+  action occurred. Owned rendering processes exited cleanly.
+- Last full catalog audit: 19,067/19,732 saved and 173.358960927 GB unique-inode
+  MP3 storage in the active download root. No acquisition in this run; bulk ETA
+  unchanged, with parked outcomes separate from render quality warnings.
+
 ## Latest — 9 October 2026: Life timeline sources, four mixes and public handoff
 
 Public collection: https://fifty-dj-room.dm-ae80.chatgpt.site/?playlist=life-timeline#mixes

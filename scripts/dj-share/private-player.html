@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Private mixes</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header><p class="eyebrow">PRIVATE · THIS MAC ONLY</p><h1 id="title">Private mixes</h1><p id="intro">Loading verified mixes…</p></header>
+  <main>
+    <section aria-label="Mix versions" id="mixes"></section>
+    <section id="sources"><h2>Original tracks</h2><p>The supplied chronological order is preserved in every version.</p><div class="table-wrap"><table><thead><tr><th scope="col">#</th><th scope="col">Track</th><th scope="col">Era</th><th scope="col">Audio</th></tr></thead><tbody id="source-rows"></tbody></table></div></section>
+  </main>
+  <footer id="player"><div><strong id="now-playing">Choose a mix or track</strong><p id="player-note">Use a chapter time to jump straight to that song.</p></div><audio controls preload="metadata" id="audio"></audio></footer>
+</body>
+</html>

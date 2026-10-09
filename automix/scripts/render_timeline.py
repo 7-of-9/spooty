@@ -31,6 +31,24 @@ def log(message):
     print(time.strftime("%Y-%m-%d %H:%M:%S"), message, flush=True)
 
 
+def handover_rows(document):
+    """Accept both numbered-handover schemas without rewriting private input."""
+    rows = []
+    for source in document["tracks"]:
+        row = dict(source)
+        names = {row[key] for key in ("handover_file", "file") if row.get(key)}
+        if len(names) != 1:
+            raise ValueError("Each track needs one unambiguous handover_file or file")
+        name = names.pop()
+        if not isinstance(name, str) or Path(name).name != name or name in (".", ".."):
+            raise ValueError("Handover filenames must stay inside the tracks directory")
+        row["handover_file"] = name
+        rows.append(row)
+    if [row["pos"] for row in rows] != list(range(1, len(rows) + 1)):
+        raise ValueError("Handover positions must be consecutive in the given order")
+    return rows
+
+
 def validate_sources(tracks):
     """Refuse to render stale analysis after any source file changes."""
     for track in tracks:
@@ -68,7 +86,7 @@ def valid_structure(path, source, digest):
 
 
 def prepare(handover, data, out, structure_method="novelty"):
-    rows = json.loads((handover / "tracklist.json").read_text())["tracks"]
+    rows = handover_rows(json.loads((handover / "tracklist.json").read_text()))
     index = {}
     structure_index = {}
     for path in (data / "structure").glob("*.json"):
@@ -287,11 +305,11 @@ def write_timeline_cue(path, mp3, name, chapters):
               [dict(chapter, title=clean(chapter["title"])) for chapter in chapters])
 
 
-def render(tracks, out, seconds):
+def render(tracks, out, seconds, playlist_name="Life timeline 1976–2026", version=1):
     validate_sources(tracks)
     label = "full" if seconds is None else f"{seconds:g}s"
     plan = build_timeline(tracks, seconds)
-    name = "Life timeline 1976–2026 · " + ("Full tracks" if seconds is None else f"{seconds:g}s per song")
+    name = playlist_name + " · " + ("Full tracks" if seconds is None else f"{seconds:g}s per song")
     path = out / f"{label}.mp3"
     work = out / f"{label}.partial.mp3"
     if path.exists():
@@ -333,7 +351,7 @@ def render(tracks, out, seconds):
               "sourceWarnings": source_warnings, "sourceAuditAvailable": bool(audits)}
     save(path.with_suffix(".json"), report)
     warn = sum(row["status"] == "warn" for row in media["joins"])
-    return {"id": "timeline-" + label, "name": name, "version": 1, "status": "done",
+    return {"id": "timeline-" + label, "name": name, "version": version, "status": "done",
             "kind": "full" if seconds is None else "medley", "excerptTargetSeconds": seconds,
             "tracks": len(tracks), "plan": str(out / f"{label}-plan.json"),
             "mp3": str(path), "cue": str(path.with_suffix(".cue")),
@@ -353,21 +371,31 @@ def main():
     ap.add_argument("--prepared", action="store_true", help="Use the completed analysis.json snapshot")
     ap.add_argument("--verify-only", action="store_true", help="Recheck completed encoded mixes without rendering")
     ap.add_argument("--durations", default="full,60,90,180", help="Comma-separated source seconds per song")
+    ap.add_argument("--name", help="Mix collection title; defaults to the handover name")
+    ap.add_argument("--version", type=int, default=1, help="Version recorded in the mix manifest")
     ap.add_argument("--structure-method", choices=("novelty", "allin1"), default="novelty",
                     help="Reuse exact cached sections; analyse uncached audio with this method")
     args = ap.parse_args()
     handover, data, out = args.handover.resolve(), args.data.resolve(), args.out.resolve()
+    document = json.loads((handover / "tracklist.json").read_text())
+    manifest_path = out / "regeneration.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else None
+    playlist_name = (args.name or (manifest or {}).get("name") or document.get("name")
+                     or "Life timeline 1976–2026")
+    if args.version < 1:
+        ap.error("--version must be positive")
     out.mkdir(parents=True, exist_ok=True)
     tracks = json.loads((out / "analysis.json").read_text()) if args.prepared else prepare(handover, data, out, args.structure_method)
-    expected = json.loads((handover / "tracklist.json").read_text())["tracks"]
+    expected = handover_rows(document)
     validate_handover(tracks, expected, handover)
     if any(not track.get("segments") for track in tracks):
         raise ValueError("Every handover track needs base and structure analysis before rendering")
     if args.prepare_only:
         return
-    manifest_path = out / "regeneration.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {
-        "name": "Life timeline 1976–2026", "started": time.time(), "track_count": len(tracks), "sets": []}
+    manifest = manifest or {
+        "name": playlist_name, "version": args.version, "started": time.time(), "track_count": len(tracks), "sets": []}
+    if manifest.get("version", 1) != args.version or manifest["name"] != playlist_name:
+        raise ValueError("Build title or version changed; use a new output directory")
     if args.verify_only:
         for row in manifest["sets"]:
             if row["status"] != "done":
@@ -410,7 +438,7 @@ def main():
             continue
         manifest.update(status="rendering", current=key, updated=time.time())
         save(manifest_path, manifest)
-        result = render(tracks, out, seconds)
+        result = render(tracks, out, seconds, playlist_name, args.version)
         manifest["sets"].append(result)
         manifest.update(updated=time.time())
         save(manifest_path, manifest)
