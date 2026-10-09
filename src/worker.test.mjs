@@ -83,14 +83,23 @@ test('multipart completion preserves required ordered part evidence', async () =
   assert.equal(r.status, 400); assert.equal(completed, false);
 });
 
-test('timeline catalogs use distinct storage keys without changing playlist 50', async () => {
-  const seen=[];
-  const store=bucket();
-  const env={BUCKET:{...store,head:async key=>{seen.push(key);return store.head(key);}}};
-  for(const path of ['/manifest.json','/mixes.json','/life-timeline-manifest.json','/life-timeline-mixes.json']) {
-    const r=await worker.fetch(new Request('https://dj.test'+path),env);
-    assert.equal(r.status,200);
-    assert.equal(r.headers.get('cache-control'),'no-store');
+test('withdrawn collection cannot be fetched through any public alias or cache condition', async () => {
+  const env={BUCKET:{head(){throw Error('Withdrawn storage must not be consulted');}}};
+  const keys=['audio/life-timeline/song.mp3','exports/life-timeline/life-timeline-dj-pack.zip','mixes/timeline-full.mp3','mixes/timeline-60s.json','mixes/timeline-90s.cue','mixes/timeline-180s-order.csv','catalog/life-timeline-manifest.json','catalog/life-timeline-mixes.json'];
+  const paths=['/?playlist=life-timeline','/?playlist=50&playlist=life-timeline','/life-timeline-manifest.json','/life-timeline-mixes.json'];
+  for(const key of keys) paths.push('/media/'+key,'/media/'+encodeURIComponent(key),'/media/'+encodeURIComponent(key).replace('life','%6cife').replace('timeline','%74imeline')+'?download=1');
+  for(const path of paths) for(const method of ['GET','HEAD']) {
+    const r=await worker.fetch(new Request('https://dj.test'+path,{method,headers:{Range:'bytes=0-10','If-None-Match':'"old"','If-Range':'"old"'}}),env);
+    assert.equal(r.status,410,path);
+    assert.equal(r.headers.get('cache-control'),'no-store',path);
+    assert.notEqual(r.headers.get('content-type'),'audio/mpeg');
+    if(method==='HEAD') assert.equal(await r.text(),'');
   }
-  assert.deepEqual(seen,['catalog/manifest.json','catalog/mixes.json','catalog/life-timeline-manifest.json','catalog/life-timeline-mixes.json']);
+});
+
+test('original collection catalogs remain available', async () => {
+  const seen=[],store=bucket();
+  const env={BUCKET:{...store,head:async key=>{seen.push(key);return store.head(key);}}};
+  for(const path of ['/manifest.json','/mixes.json']) assert.equal((await worker.fetch(new Request('https://dj.test'+path),env)).status,200);
+  assert.deepEqual(seen,['catalog/manifest.json','catalog/mixes.json']);
 });

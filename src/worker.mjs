@@ -3,6 +3,9 @@ import HTML from './page.mjs';
 const security = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { ...security, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const validKey = key => typeof key === 'string' && key.length < 900 && !/[\x00-\x1f\\]/.test(key) && !key.split('/').some(p => !p || p === '.' || p === '..') && /^(audio|mixes|exports|catalog)\//.test(key);
+// This collection was withdrawn at the owner's request. Gate every storage alias.
+const withdrawnKey = key => /^(?:audio|exports|catalog)\/life-timeline(?:[\/.-]|$)|^mixes\/(?:life-)?timeline(?:[\/.-]|$)/i.test(key);
+const withdrawn = request => new Response(request.method === 'HEAD' ? null : JSON.stringify({ error: 'This collection is no longer public.' }), { status: 410, headers: { ...security, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const encodedFilename = name => encodeURIComponent(name).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 const metadata = body => ({ httpMetadata: { contentType: body.contentType || 'application/octet-stream' }, customMetadata: { sha256: String(body.sha256 || ''), filename: String(body.filename || '').replace(/[\r\n]/g, ''), bytes: String(body.bytes || '') } });
 
@@ -19,6 +22,7 @@ export function byteRange(header, size) {
 
 async function media(request, env, key, download = false) {
   if (!validKey(key)) return json({ error: 'File not found' }, 404);
+  if (withdrawnKey(key)) return withdrawn(request);
   const head = await env.BUCKET.head(key);
   if (!head) return json({ error: 'This file is not available yet.' }, 404);
   const headers = new Headers(security);
@@ -80,13 +84,14 @@ export default {
         return json({ error: 'Not found' }, 404);
       }
       if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
+      if (url.pathname === '/' && url.searchParams.getAll('playlist').some(value => value.startsWith('life-timeline'))) return new Response(request.method === 'HEAD' ? null : '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Collection unavailable</title><main><h1>This collection is no longer public.</h1><p>It has been withdrawn by its owner.</p></main></html>', { status: 410, headers: { ...security, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
       if (url.pathname === '/') return new Response(request.method === 'HEAD' ? null : HTML, { headers: { ...security, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'" } });
       if (url.pathname === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: security });
       if (!env.BUCKET) return json({ error: 'The download library is temporarily unavailable.' }, 503);
       if (url.pathname === '/manifest.json') return media(request, env, 'catalog/manifest.json');
       if (url.pathname === '/mixes.json') return media(request, env, 'catalog/mixes.json');
-      if (url.pathname === '/life-timeline-manifest.json') return media(request, env, 'catalog/life-timeline-manifest.json');
-      if (url.pathname === '/life-timeline-mixes.json') return media(request, env, 'catalog/life-timeline-mixes.json');
+      if (url.pathname === '/life-timeline-manifest.json') return withdrawn(request);
+      if (url.pathname === '/life-timeline-mixes.json') return withdrawn(request);
       if (url.pathname.startsWith('/media/')) return media(request, env, decodeURIComponent(url.pathname.slice(7)), url.searchParams.get('download') === '1');
       return json({ error: 'Not found' }, 404);
     } catch (error) {

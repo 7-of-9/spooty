@@ -46,7 +46,7 @@ test('completed mix metadata links bypass an early visitor’s cached draft', ()
 
 test('collection links load isolated catalogs and omit absent Spotify identities', async () => {
   const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-  for (const [query, prefix, expectedCount] of [['?playlist=life-timeline', '/life-timeline-', 55], ['?playlist=50', '/', 100], ['?playlist=unknown', '/', 100]]) {
+  for (const [query, prefix, expectedCount] of [['?playlist=50', '/', 100], ['?playlist=unknown', '/', 100]]) {
     const elements = new Map(), calls = [];
     const element = id => {
       if (!elements.has(id)) elements.set(id, { dataset: {}, value: '', setAttribute() {}, addEventListener() {}, querySelectorAll: () => [] });
@@ -66,4 +66,9 @@ test('collection links load isolated catalogs and omit absent Spotify identities
     element('search').value='Song 55';context.renderTracks();
     assert.match(element('count').textContent,/1 of/);
   }
+});
+
+test('public page does not advertise or fetch withdrawn collection', () => {
+  const html=readFileSync(new URL('./index.html', import.meta.url),'utf8');
+  assert.doesNotMatch(html,/life-timeline|Life timeline/);
 });
